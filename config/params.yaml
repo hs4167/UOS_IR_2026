@@ -1,0 +1,44 @@
+# 청소 구역 탐지기 파라미터. 코드에 값을 박지 말고 여기서 바꾼다.
+# 단위: 길이 m, 시간 s (따로 적은 경우 제외)
+
+roi:                      # base_footprint 기준 근거리 관심 영역 (x 전방, y 왼쪽)
+  x_min: 0.15
+  x_max: 0.60
+  y_min: -0.25
+  y_max: 0.25
+
+grid:
+  resolution: 0.01        # 바닥 격자 해상도 (LiDAR 지도는 0.05)
+
+compare:
+  method: sad_gray        # sad_gray | local_mean_removed | chroma_diff
+  neighborhood: 1         # 주변 (2r+1)x(2r+1) 칸 중 최소 차이 사용
+  local_mean_window: 15   # local_mean_removed용 box filter 크기 (칸)
+  k: 3.0                  # 임계값 = max(k * sqrt(ref_var), min_thr)
+  min_thr: 8.0            # 최소 임계값 (Lab 단위)
+
+dirt_map:
+  p_hit: 0.7
+  p_miss: 0.4
+  l_min: -2.0
+  l_max: 3.5
+  suspect_p: 0.7          # 이 확률 이상이면 "오염 의심"
+  min_region_area: 0.0004 # m^2 (2 cm x 2 cm) 미만 구역 제거
+
+exclusion:
+  lidar_radius: 0.05      # LiDAR 점 주변 제외 반경
+  detectnet_classes: [person, chair, backpack, handbag, suitcase]
+  detectnet_bottom_ratio: 0.3   # 박스 아래쪽 몇 비율을 바닥 접점 띠로 볼지
+
+revisit:
+  n_shots: 5
+  restore_ratio: 0.9
+  standoff: 0.35          # 구역 중심이 로봇 전방 이 거리에 오도록 정지
+
+viz:
+  update_interval_s: 2.0
+
+debug:
+  output: none            # none | file | rtsp (rtsp는 젯슨 전용)
+  every_n: 10             # file 모드: N프레임마다 저장
+  rtsp_url: "rtsp://@:8554/debug"

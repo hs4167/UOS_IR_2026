@@ -1,0 +1,10 @@
+CLAUDE.md
+# 개발 환경
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 실행 데이터·결과 (용량 큼, git 제외)
+data/
+results/

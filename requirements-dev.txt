@@ -1,0 +1,9 @@
+# WSL 개발용 (Python 3.8 venv) 전용.
+# 젯슨(test1001)에서는 이 파일로 설치하지 않는다: Jetson 전용 OpenCV(CUDA)·numpy를 덮어쓰게 됨.
+# 젯슨에서 pytest가 없을 때만: pip install --no-deps pytest
+#
+# 설치: uv venv -p 3.8 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt
+numpy==1.24.4
+opencv-python-headless==4.10.0.84
+pyyaml==6.0.2
+pytest==8.3.5
