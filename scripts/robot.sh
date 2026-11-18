@@ -60,14 +60,18 @@ _robot_check_devices() {
     fi
 }
 
-if [[ $_ROBOT_SOURCED -eq 1 ]]; then
-    _robot_setup_env && echo "[robot.sh] 환경 설정 완료. 예: ros2 run turtlebot3_teleop teleop_keyboard"
-else
+if [[ $_ROBOT_SOURCED -eq 0 ]]; then
     _robot_setup_env
     _robot_check_devices
     echo "[robot.sh] bringup 시작 (종료: Ctrl+C)"
     exec ros2 launch turtlebot3_bringup robot.launch.py
 fi
 
+# source 모드: 환경 설정만 하고, 성공 여부를 호출한 쪽에 돌려준다
+# (teleop.sh 등이 'source robot.sh || exit 1' 로 실패를 감지할 수 있게)
+_robot_setup_env
+_robot_rc=$?
+[[ $_robot_rc -eq 0 ]] && echo "[robot.sh] 환경 설정 완료"
 unset -f _robot_fail _robot_setup_env _robot_check_devices
 unset _ROBOT_SOURCED
+return $_robot_rc
