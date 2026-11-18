@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# TurtleBot3 (ROS 2 Foxy) 환경 설정 + bringup 스크립트
+#
+# 사용법 (젯슨, conda 끈 상태에서):
+#   ./scripts/robot.sh            터미널 1: 환경 설정 후 bringup 실행 (Ctrl+C로 종료)
+#   source scripts/robot.sh       터미널 2~: 환경 설정만 (teleop, ros2 topic 등을 쓸 터미널)
+#
+# 기본값을 바꾸려면 앞에 붙여서 실행:
+#   LDS_MODEL=LDS-02 ./scripts/robot.sh
+#   ROS_DOMAIN_ID=8 source scripts/robot.sh
+
+# source로 불렸는지(환경 설정만) 직접 실행됐는지(bringup까지) 판별
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    _ROBOT_SOURCED=1
+else
+    _ROBOT_SOURCED=0
+fi
+
+_robot_fail() {
+    echo "[robot.sh] 오류: $*" >&2
+    if [[ $_ROBOT_SOURCED -eq 1 ]]; then return 1; else exit 1; fi
+}
+
+_robot_setup_env() {
+    # 1. conda와 섞이면 ROS 라이브러리 경로가 꼬이므로 공식 TurtleBot3 실행은 conda 밖에서 한다
+    if [[ -n "${CONDA_PREFIX:-}" ]]; then
+        if [[ $_ROBOT_SOURCED -eq 1 ]] && type conda >/dev/null 2>&1; then
+            echo "[robot.sh] conda 환경($(basename "$CONDA_PREFIX"))을 끕니다"
+            conda deactivate
+        else
+            _robot_fail "conda 환경이 켜져 있습니다. 'conda deactivate' 후 다시 실행하세요" || return 1
+        fi
+    fi
+
+    # 2. ROS 2 Foxy
+    if [[ ! -f /opt/ros/foxy/setup.bash ]]; then
+        _robot_fail "/opt/ros/foxy/setup.bash 가 없습니다 (젯슨에서 실행하세요)" || return 1
+    fi
+    # shellcheck disable=SC1091
+    source /opt/ros/foxy/setup.bash
+
+    # 3. 환경 변수 (이미 설정된 값이 있으면 그대로 사용)
+    export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"          # 7조. 다른 조 로봇과 통신이 섞이지 않게
+    export TURTLEBOT3_MODEL="${TURTLEBOT3_MODEL:-waffle_pi}"
+    export LDS_MODEL="${LDS_MODEL:-LDS-01}"             # LiDAR 라벨 확인 후 LDS-02면 바꿀 것
+
+    echo "[robot.sh] ROS_DISTRO=$ROS_DISTRO ROS_DOMAIN_ID=$ROS_DOMAIN_ID" \
+         "TURTLEBOT3_MODEL=$TURTLEBOT3_MODEL LDS_MODEL=$LDS_MODEL"
+}
+
+_robot_check_devices() {
+    if [[ ! -e /dev/ttyACM0 ]]; then
+        _robot_fail "/dev/ttyACM0(OpenCR)이 없습니다. OpenCR USB 연결과 전원 스위치를 확인하세요" || return 1
+    fi
+    echo "[robot.sh] OpenCR: /dev/ttyACM0 확인"
+    if [[ ! -e /dev/ttyUSB0 ]]; then
+        echo "[robot.sh] 경고: /dev/ttyUSB0(LiDAR)이 없습니다. LiDAR 없이 진행합니다 (/scan 없음, 주행은 가능)"
+    else
+        echo "[robot.sh] LiDAR: /dev/ttyUSB0 확인"
+    fi
+}
+
+if [[ $_ROBOT_SOURCED -eq 1 ]]; then
+    _robot_setup_env && echo "[robot.sh] 환경 설정 완료. 예: ros2 run turtlebot3_teleop teleop_keyboard"
+else
+    _robot_setup_env
+    _robot_check_devices
+    echo "[robot.sh] bringup 시작 (종료: Ctrl+C)"
+    exec ros2 launch turtlebot3_bringup robot.launch.py
+fi
+
+unset -f _robot_fail _robot_setup_env _robot_check_devices
+unset _ROBOT_SOURCED
