@@ -45,11 +45,12 @@ UOS_IR_2026/
 │   ├── timing.py           처리 단계별 소요 시간(ms)을 프레임마다 CSV로 기록
 │   ├── dataset.py          프레임 데이터셋 저장·읽기 (이미지 + 촬영 시점 자세 + LiDAR 점)
 │   ├── projection.py       바닥 투영: 왜곡 보정, 픽셀 → 로봇 → 지도 좌표, 이미지를 바닥 격자로 옮기기
-│   └── calibration.py      카메라 보정: 체커보드 검출, 내부 보정(K, D), 바닥 투영 행렬(H), 오차 검사
-│                           (예정) 기준 격자, 비교, 제외 마스크, 오염 확률, 재방문
+│   ├── calibration.py      카메라 보정: 체커보드 검출, 내부 보정(K, D), 바닥 투영 행렬(H), 오차 검사
+│   └── floor_grid.py       기준 바닥 격자: 칸별 색(Lab) 평균·분산·관측 횟수 누적, 저장·불러오기, 빈 곳 확인
+│                           (예정) 비교, 제외 마스크, 오염 확률, 재방문
 ├── launch/                 (예정) ROS 2 launch 파일
 ├── maps/                   지도
-│   └── reference/          (예정) 기준 바닥 지도 (칸별 색 평균·변동폭·관측 횟수)
+│   └── reference/          기준 바닥 지도 저장 위치 (reference.npz + reference.yaml, 기준 주행 후 생성)
 │                           (예정) classroom.pgm / classroom.yaml (LiDAR SLAM 지도)
 ├── ros_nodes/              (예정) ROS 2 노드 (토픽 구독·발행만 하고 처리는 floor_dirt 호출)
 ├── scripts/                실행 스크립트
@@ -65,7 +66,8 @@ UOS_IR_2026/
 │   ├── synthetic.py        테스트용 합성 카메라 (가상 바닥·체커보드를 정해진 자세에서 찍은 이미지 생성)
 │   ├── test_foundation.py  config·timing·dataset 테스트
 │   ├── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
-│   └── test_calibration.py 보정 테스트 (K·D 복원, 보드 방향 정렬, H 정확도, 잘못 잰 원점 검출)
+│   ├── test_calibration.py 보정 테스트 (K·D 복원, 보드 방향 정렬, H 정확도, 잘못 잰 원점 검출)
+│   └── test_floor_grid.py  기준 격자 테스트 (평균·분산 정확도, 주행 병합, 저장, 지도 방향, 합성 주행)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)
@@ -126,7 +128,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | 주행 | bringup, 키보드 주행, 오도메트리 확인 (젯슨) | ✅ |
 | [0] | 카메라 보정, 바닥 투영 | 🟨 코드 완료 (WSL 합성 검증), 실기 보정 전 |
 | [1] | LiDAR 연결, SLAM 지도 작성 | ⬜ |
-| [2] | 기준 바닥 지도 | ⬜ |
+| [2] | 기준 바닥 지도 | 🟨 격자 누적·저장 완료 (WSL), 실행 스크립트는 단위 11 |
 | [3] | 오염 확률 지도, 오염 구역 추출 | ⬜ |
 | [4] | 재방문, 처리 여부 검증 | ⬜ |
 

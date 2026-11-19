@@ -16,6 +16,10 @@ calibration:              # [0] 카메라 보정 · 바닥 투영
   floor_pass_mean: 0.01   # 투영 오차 평균 통과 기준 [m]
   floor_min_marks: 5      # 통과 판정에 필요한 ROI 안 확인점 최소 개수
 
+reference:                # [2] 기준 바닥 격자
+  min_count: 3            # 이 횟수 이상 본 칸만 기준으로 인정 (적으면 "확인 불가")
+  coverage_warn: 0.9      # 바닥 칸 중 기준 있는 비율이 이보다 낮으면 재주행 권고
+
 compare:
   method: sad_gray        # sad_gray | local_mean_removed | chroma_diff
   neighborhood: 1         # 주변 (2r+1)x(2r+1) 칸 중 최소 차이 사용
