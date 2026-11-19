@@ -22,7 +22,7 @@
 | ---- | ---- |
 | 로봇 | TurtleBot3 Waffle Pi (OpenCR, 360° 2D LiDAR) |
 | 컴퓨터 | ASUS PE1000N (NVIDIA Jetson Xavier NX 8GB) |
-| 카메라 | Waffle Pi 기본 카메라, Intel RealSense (바닥 카메라 선정 중) |
+| 카메라 | Logitech C920 USB 웹캠 (바닥 촬영용, 자동 노출·초점 끄고 고정) |
 | OS / JetPack | Ubuntu 20.04 (L4T r35.6) / JetPack 5.1.5 |
 | ROS | ROS 2 Foxy |
 | Python | 3.8 (conda 환경 `test1001`) |
@@ -42,8 +42,9 @@ UOS_IR_2026/
 ├── floor_dirt/             처리 로직 패키지 (순수 Python, ROS 의존 없음)
 │   ├── config.py           params.yaml 로드, 부분 덮어쓰기, "compare.k" 형태 조회
 │   ├── timing.py           처리 단계별 소요 시간(ms)을 프레임마다 CSV로 기록
-│   └── dataset.py          프레임 데이터셋 저장·읽기 (이미지 + 촬영 시점 자세 + LiDAR 점)
-│                           (예정) 보정, 투영, 기준 격자, 비교, 제외 마스크, 오염 확률, 재방문
+│   ├── dataset.py          프레임 데이터셋 저장·읽기 (이미지 + 촬영 시점 자세 + LiDAR 점)
+│   └── projection.py       바닥 투영: 왜곡 보정, 픽셀 → 로봇 → 지도 좌표, 이미지를 바닥 격자로 옮기기
+│                           (예정) 보정, 기준 격자, 비교, 제외 마스크, 오염 확률, 재방문
 ├── launch/                 (예정) ROS 2 launch 파일
 ├── maps/                   지도
 │   └── reference/          (예정) 기준 바닥 지도 (칸별 색 평균·변동폭·관측 횟수)
@@ -55,7 +56,9 @@ UOS_IR_2026/
 │   └── odom_monitor.sh     오도메트리 확인 (수신 주기, 위치, 속도, 이동 거리)
 │                           (예정) 카메라 보정, rosbag 추출, 오프라인 처리, 평가, 결과 웹 서버
 ├── tests/                  floor_dirt 단위 테스트
-│   └── test_foundation.py  config·timing·dataset 테스트
+│   ├── synthetic.py        테스트용 합성 카메라 (가상 바닥을 정해진 자세에서 찍은 이미지 생성)
+│   ├── test_foundation.py  config·timing·dataset 테스트
+│   └── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)
