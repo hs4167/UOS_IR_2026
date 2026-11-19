@@ -40,20 +40,28 @@ def _read(path):
 
 def read_rails(root=HWMON_ROOT):
     # type: (str) -> List[Rail]
-    """INA3221 레일 목록. 센서가 없거나 읽을 수 없으면 []."""
+    """INA3221 채널 목록. 센서가 없거나 읽을 수 없으면 [].
+
+    보드 설정(device tree)에 채널 이름이 없으면 in{N}_label 파일이 없다 (ASUS PE1000N이 그랬음).
+    그때는 'CH{N}'으로 부른다. INA3221은 채널 1~3이 버스 전압, 4~6은 분류 전압이라 1~3만 본다.
+    꺼진 채널(in{N}_enable == 0, 이름 NC)과 전압 0인 채널은 뺀다.
+    """
     rails = []
     for dev in sorted(glob.glob(os.path.join(root, "hwmon*"))):
         if (_read(os.path.join(dev, "name")) or "").lower() != "ina3221":
             continue
-        for lab_path in sorted(glob.glob(os.path.join(dev, "in*_label"))):
-            n = os.path.basename(lab_path)[2:-len("_label")]
-            label = _read(lab_path)
+        for n in (1, 2, 3):
             mv = _read(os.path.join(dev, "in{}_input".format(n)))
-            if not label or label.upper() == "NC" or mv is None:
+            if mv is None:
+                continue
+            label = _read(os.path.join(dev, "in{}_label".format(n))) or "CH{}".format(n)
+            if label.upper() == "NC" or _read(os.path.join(dev, "in{}_enable".format(n))) == "0":
                 continue
             try:
                 volts = int(mv) / 1000.0
             except ValueError:
+                continue
+            if volts <= 0.0:
                 continue
             ma = _read(os.path.join(dev, "curr{}_input".format(n)))
             watts = None
@@ -68,11 +76,13 @@ def read_rails(root=HWMON_ROOT):
 
 def input_rail(rails):
     # type: (List[Rail]) -> Optional[Rail]
-    """전체 입력 레일 (VDD_IN 우선, 없으면 첫 레일)."""
+    """전체 입력 레일. 이름이 VDD_IN이면 그것, 이름이 없으면 전력이 가장 큰 채널 (입력은 모든 소비의 합이라 가장 큼)."""
     for r in rails:
         if r.label.upper() in ("VDD_IN", "VIN", "VDD_IN_SYS"):
             return r
-    return rails[0] if rails else None
+    if not rails:
+        return None
+    return max(rails, key=lambda r: (r.watts if r.watts is not None else -1.0, r.volts or 0.0))
 
 
 # ---------------------------------------------------------------- tegrastats (대체 방법)

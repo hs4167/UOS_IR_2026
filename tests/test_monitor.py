@@ -325,3 +325,20 @@ def test_tegrastats_reader_with_fake_command(tmp_path):
     finally:
         rd.close()
     assert not os.path.exists("/proc/{}".format(rd._proc.pid)) or rd._proc.poll() is not None
+
+
+def test_ina3221_without_labels(tmp_path):
+    """채널 이름(in*_label)이 없는 보드: CH 번호로 읽고, 전력이 가장 큰 채널을 입력으로 본다."""
+    from floor_dirt.jetson_power import input_rail, read_rails
+    dev = tmp_path / "hwmon5"
+    dev.mkdir()
+    (dev / "name").write_text("ina3221\n")
+    for n, (mv, ma, en) in {1: (5080, 900, "1"), 2: (5080, 250, "1"), 3: (0, 0, "0")}.items():
+        (dev / "in{}_input".format(n)).write_text(str(mv))
+        (dev / "curr{}_input".format(n)).write_text(str(ma))
+        (dev / "in{}_enable".format(n)).write_text(en)
+    (dev / "in4_input").write_text("12")                       # 분류 전압 채널은 무시
+    rails = read_rails(str(tmp_path))
+    assert [r.label for r in rails] == ["CH1", "CH2"]
+    r = input_rail(rails)
+    assert r.label == "CH1" and r.watts == pytest.approx(5.08 * 0.9)
