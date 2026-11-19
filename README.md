@@ -36,15 +36,17 @@ GitHub 첫 화면에 보이는 순서대로 정리했습니다. *(예정)* 표�
 UOS_IR_2026/
 ├── config/                 설정 파일
 │   └── params.yaml         모든 처리 파라미터 (ROI, 격자 해상도, 비교 임계값, 확률, 재방문, 디버그 출력)
-│                           (예정) camera_intrinsics.yaml, floor_homography.yaml, camera_settings.yaml
+│                           (보정 후 생성) camera_intrinsics.yaml, floor_homography.yaml
+│                           (예정) camera_settings.yaml
 ├── docs/                   문서
 │   └── 실험_기록.md        시도·결과·실패 원인 기록 (보고서 자료)
 ├── floor_dirt/             처리 로직 패키지 (순수 Python, ROS 의존 없음)
 │   ├── config.py           params.yaml 로드, 부분 덮어쓰기, "compare.k" 형태 조회
 │   ├── timing.py           처리 단계별 소요 시간(ms)을 프레임마다 CSV로 기록
 │   ├── dataset.py          프레임 데이터셋 저장·읽기 (이미지 + 촬영 시점 자세 + LiDAR 점)
-│   └── projection.py       바닥 투영: 왜곡 보정, 픽셀 → 로봇 → 지도 좌표, 이미지를 바닥 격자로 옮기기
-│                           (예정) 보정, 기준 격자, 비교, 제외 마스크, 오염 확률, 재방문
+│   ├── projection.py       바닥 투영: 왜곡 보정, 픽셀 → 로봇 → 지도 좌표, 이미지를 바닥 격자로 옮기기
+│   └── calibration.py      카메라 보정: 체커보드 검출, 내부 보정(K, D), 바닥 투영 행렬(H), 오차 검사
+│                           (예정) 기준 격자, 비교, 제외 마스크, 오염 확률, 재방문
 ├── launch/                 (예정) ROS 2 launch 파일
 ├── maps/                   지도
 │   └── reference/          (예정) 기준 바닥 지도 (칸별 색 평균·변동폭·관측 횟수)
@@ -53,12 +55,17 @@ UOS_IR_2026/
 ├── scripts/                실행 스크립트
 │   ├── robot.sh            환경 설정 + TurtleBot3 bringup (source 하면 환경 설정만)
 │   ├── teleop.sh           키보드 주행
-│   └── odom_monitor.sh     오도메트리 확인 (수신 주기, 위치, 속도, 이동 거리)
-│                           (예정) 카메라 보정, rosbag 추출, 오프라인 처리, 평가, 결과 웹 서버
+│   ├── odom_monitor.sh     오도메트리 확인 (수신 주기, 위치, 속도, 이동 거리)
+│   ├── capture_images.py   웹캠으로 보정용 사진 촬영 (화면 없이 자동/Enter 촬영)
+│   ├── calibrate_intrinsics.py  체커보드 사진들 → camera_intrinsics.yaml
+│   ├── calibrate_floor.py  바닥 보드 사진 + 실측 좌표 → floor_homography.yaml
+│   └── check_floor_projection.py  다른 위치 실측점으로 투영 오차 검사 (통과/실패)
+│                           (예정) 카메라 설정 고정, rosbag 추출, 오프라인 처리, 평가, 결과 웹 서버
 ├── tests/                  floor_dirt 단위 테스트
-│   ├── synthetic.py        테스트용 합성 카메라 (가상 바닥을 정해진 자세에서 찍은 이미지 생성)
+│   ├── synthetic.py        테스트용 합성 카메라 (가상 바닥·체커보드를 정해진 자세에서 찍은 이미지 생성)
 │   ├── test_foundation.py  config·timing·dataset 테스트
-│   └── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
+│   ├── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
+│   └── test_calibration.py 보정 테스트 (K·D 복원, 보드 방향 정렬, H 정확도, 잘못 잰 원점 검출)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)
@@ -78,6 +85,21 @@ conda를 끈 상태에서 저장소 폴더로 이동한 뒤 실행합니다.
 | 1 | `./scripts/robot.sh` | 환경 설정 + bringup (OpenCR, LiDAR) |
 | 2 | `./scripts/teleop.sh` | 키보드 주행 |
 | 3 | `./scripts/odom_monitor.sh` | 오도메트리 확인 |
+
+### 카메라 보정 (젯슨, conda `test1001`)
+
+체커보드 칸 크기를 자로 재서 `config/params.yaml`의 `calibration.square`에 넣은 뒤 진행합니다.
+
+```bash
+# 1) 내부 보정: 보드를 화면 구석구석·여러 각도로 움직이며 20장
+python scripts/capture_images.py --out data/calib_intrinsics --count 20 --pattern 9x6
+python scripts/calibrate_intrinsics.py --images "data/calib_intrinsics/*.png"
+# 2) 바닥 보정: 보드를 로봇 앞 바닥에 놓고 기준 코너(가장 가깝고 오른쪽) 좌표를 줄자로 잼
+python scripts/capture_images.py --out data/calib_floor --manual --count 2
+python scripts/calibrate_floor.py --image data/calib_floor/000.png --origin 0.250 -0.090
+# 3) 검사: 보드를 다른 위치로 옮겨 찍은 사진으로 오차 평균 1 cm 이하인지 확인
+python scripts/check_floor_projection.py --board data/calib_floor/001.png --origin 0.380 0.020
+```
 
 ### 개발환경 테스트
 
@@ -102,7 +124,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | ---- | ---- | ---- |
 | 기반 | 파라미터, 처리 시간 측정, 프레임 데이터셋 | ✅ |
 | 주행 | bringup, 키보드 주행, 오도메트리 확인 (젯슨) | ✅ |
-| [0] | 카메라 보정, 바닥 투영 | ⬜ |
+| [0] | 카메라 보정, 바닥 투영 | 🟨 코드 완료 (WSL 합성 검증), 실기 보정 전 |
 | [1] | LiDAR 연결, SLAM 지도 작성 | ⬜ |
 | [2] | 기준 바닥 지도 | ⬜ |
 | [3] | 오염 확률 지도, 오염 구역 추출 | ⬜ |
