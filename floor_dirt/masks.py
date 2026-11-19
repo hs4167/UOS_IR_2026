@@ -165,16 +165,11 @@ def window_keep_mask(result, image_exclude=None, lidar_points=None, pose=None, g
 # ---------------------------------------------------------------- jetson-inference 래퍼 (젯슨 전용)
 
 def _import_jetson():
+    from floor_dirt.jetson import import_jetson
     try:
-        import jetson_inference  # type: ignore
-        import jetson_utils  # type: ignore
-    except ImportError:
-        try:
-            import jetson.inference as jetson_inference  # type: ignore  # 예전 이름
-            import jetson.utils as jetson_utils  # type: ignore
-        except ImportError as e:
-            raise ImportError("jetson-inference를 불러올 수 없습니다 (젯슨에서 실행하거나 use_segnet/use_detectnet을 끄세요): {}".format(e))
-    return jetson_inference, jetson_utils
+        return import_jetson(need_inference=True)
+    except ImportError as e:
+        raise ImportError("{} (WSL에서는 use_segnet/use_detectnet을 끄세요)".format(e))
 
 
 def _to_cuda(ju, bgr):

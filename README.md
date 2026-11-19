@@ -51,8 +51,11 @@ UOS_IR_2026/
 │   ├── masks.py            제외 마스크: LiDAR 점 주변, 로봇 몸체, detectNet 박스, segNet 바닥 아닌 픽셀
 │   ├── dirt_map.py         오염 확률 지도: 칸별 log-odds 누적, 깨끗함/의심/확인 불가, 오염 구역 추출·저장
 │   ├── viz.py              시각화: 결과 지도 dirt_map.png (LiDAR 지도 위 확률·구역·로봇), 구역 사진, 카메라 디버그 오버레이
-│   ├── debug_stream.py     디버그 영상 출력: 없음 / 파일 / RTSP(젯슨)
-│   └── pipeline.py         처리 묶음: 기준 주행(ReferenceBuilder)·정찰 주행(Patroller). 오프라인·ROS 공용
+│   ├── debug_stream.py     디버그 영상 출력: 없음 / 파일 / 브라우저(HTTP) / RTSP(젯슨)
+│   ├── pipeline.py         처리 묶음: 기준 주행(ReferenceBuilder)·정찰 주행(Patroller). 오프라인·ROS 공용
+│   ├── monitor.py          실시간 모니터 화면 합성: 카메라(+ROI·LiDAR 바닥 위치), LiDAR 위에서 본 그림, 상태 줄
+│   ├── mjpeg_server.py     브라우저용 실시간 영상 서버 (MJPEG over HTTP, 표준 라이브러리만)
+│   └── jetson.py           jetson-inference/utils 불러오기 (conda에서 시스템 경로 보완)
 │                           (예정) 재방문
 ├── launch/                 (예정) ROS 2 launch 파일
 ├── maps/                   지도
@@ -63,6 +66,8 @@ UOS_IR_2026/
 │   ├── robot.sh            환경 설정 + TurtleBot3 bringup (source 하면 환경 설정만)
 │   ├── teleop.sh           키보드 주행
 │   ├── odom_monitor.sh     오도메트리 확인 (수신 주기, 위치, 속도, 이동 거리)
+│   ├── monitor.sh          실시간 모니터 실행 (conda 유지 + ROS 환경 설정 → live_monitor.py)
+│   ├── live_monitor.py     카메라 + LiDAR + odom을 한 화면으로 송출 (노트북 브라우저로 확인)
 │   ├── capture_images.py   웹캠으로 보정용 사진 촬영 (화면 없이 자동/Enter 촬영)
 │   ├── calibrate_intrinsics.py  체커보드 사진들 → camera_intrinsics.yaml
 │   ├── calibrate_floor.py  바닥 보드 사진 + 실측 좌표 → floor_homography.yaml
@@ -78,7 +83,8 @@ UOS_IR_2026/
 │   ├── test_masks.py       제외 마스크 테스트 (박스·다각형·LiDAR 원, 가짜 jetson-inference, 물체 오탐 제거)
 │   ├── test_dirt_map.py    오염 확률 테스트 (누적·클램프, 상태, 구역 크기·중심, 저장, 합성 정찰 구역 1개)
 │   ├── test_viz.py         시각화 테스트 (색·방향·빗금·구역 표시, LiDAR 배경, 오버레이, 구역 사진, 디버그 출력)
-│   └── test_e2e.py         합성 강의실 E2E: 기준 주행 → 정찰 → 오염 3개 검출·오탐 0·위치 오차 2 cm 이내
+│   ├── test_e2e.py         합성 강의실 E2E: 기준 주행 → 정찰 → 오염 3개 검출·오탐 0·위치 오차 2 cm 이내
+│   └── test_monitor.py     모니터 테스트 (LiDAR 그림 방향, 카메라 위 LiDAR 점, 상태 줄, 메시지 변환, 재생 실행, 브라우저 스트림)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)
@@ -98,6 +104,46 @@ conda를 끈 상태에서 저장소 폴더로 이동한 뒤 실행합니다.
 | 1 | `./scripts/robot.sh` | 환경 설정 + bringup (OpenCR, LiDAR) |
 | 2 | `./scripts/teleop.sh` | 키보드 주행 |
 | 3 | `./scripts/odom_monitor.sh` | 오도메트리 확인 |
+| 4 | `conda activate test1001` → `./scripts/monitor.sh` | 실시간 모니터 |
+
+### 실시간 모니터링 (젯슨 → 노트북 브라우저)
+
+**젯슨 터미널 1 (bringup):**
+
+```bash
+./scripts/robot.sh
+```
+
+**젯슨 터미널 2 (모니터):**
+
+```bash
+conda activate test1001
+./scripts/monitor.sh
+```
+
+**노트북 (Edge/Chrome 주소창):**
+
+```
+http://<젯슨IP>:8080
+```
+
+**옵션:**
+
+```bash
+./scripts/monitor.sh --no-ros                     # 카메라만 (bringup 없이)
+./scripts/monitor.sh --topic /image_raw           # 카메라 노드의 이미지 토픽 사용
+./scripts/monitor.sh --no-camera                  # LiDAR·odom만
+./scripts/monitor.sh --camera /dev/video2         # 다른 카메라 장치
+./scripts/monitor.sh --fps 5 --quality 60         # 네트워크가 느릴 때
+./scripts/monitor.sh --output rtsp                # VLC로 보기: rtsp://<젯슨IP>:8554/monitor
+./scripts/monitor.sh --help
+```
+
+**개발 PC (WSL, 데이터셋 재생 → Windows 브라우저 http://localhost:8080):**
+
+```bash
+.venv/bin/python scripts/live_monitor.py --dataset data/<run> --loop
+```
 
 ### 카메라 보정 (젯슨, conda `test1001`)
 

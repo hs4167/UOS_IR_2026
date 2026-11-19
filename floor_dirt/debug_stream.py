@@ -2,8 +2,9 @@
 
 - none: 아무것도 안 함 (기본, 성능 영향 없음)
 - file: results/<run>/debug/에 N프레임마다 PNG 저장 (WSL·오프라인)
+- http: 브라우저용 MJPEG 스트림 (기본 프로그램인 Edge·Chrome으로 http://<젯슨IP>:<포트> 접속). 설치 불필요
 - rtsp: 젯슨 전용. jetson-utils videoOutput으로 하드웨어 인코딩 송출.
-        노트북 VLC에서 rtsp://<젯슨IP>:8554/debug 접속.
+        브라우저는 RTSP를 못 열어서 VLC 같은 플레이어가 필요하다 (rtsp://<젯슨IP>:8554/debug).
 """
 
 import os
@@ -11,7 +12,7 @@ import os
 import cv2
 import numpy as np
 
-MODES = ("none", "file", "rtsp")
+MODES = ("none", "file", "http", "rtsp")
 
 
 class DebugOutput:
@@ -25,20 +26,22 @@ class DebugOutput:
         self.written = 0
         self._video = None
         self._ju = None
+        self._http = None
         if self.mode == "file":
             if not out_dir:
                 raise ValueError("file 모드에는 out_dir이 필요합니다")
             os.makedirs(out_dir, exist_ok=True)
+        elif self.mode == "http":
+            from floor_dirt.mjpeg_server import MjpegServer
+            self._http = MjpegServer(port=int(cfg.get("http_port", 8080)), quality=int(cfg.get("jpeg_quality", 80)),
+                                     title=cfg.get("title", "debug"))
         elif self.mode == "rtsp":
-            try:
-                import jetson_utils as ju  # type: ignore
-            except ImportError:
-                try:
-                    import jetson.utils as ju  # type: ignore
-                except ImportError as e:
-                    raise ImportError("rtsp 출력은 젯슨(jetson-utils)에서만 됩니다: {}".format(e))
+            from floor_dirt.jetson import import_jetson
+            _, ju = import_jetson(need_inference=False)
             self._ju = ju
-            self._video = ju.videoOutput(cfg.get("rtsp_url", "rtsp://@:8554/debug"))
+            url = cfg.get("rtsp_url", "rtsp://@:8554/debug")
+            args = list(cfg.get("rtsp_args", []))  # 예: ["--bitrate=2000000", "--headless"]
+            self._video = ju.videoOutput(url, argv=args) if args else ju.videoOutput(url)
 
     @property
     def enabled(self):
@@ -48,7 +51,7 @@ class DebugOutput:
         """이번 프레임을 내보낼 차례인지 (오버레이 그리는 비용을 아끼려고 먼저 묻는다)."""
         if self.mode == "none":
             return False
-        if self.mode == "rtsp":
+        if self.mode in ("rtsp", "http"):
             return True
         return self.count % self.every_n == 0
 
@@ -60,6 +63,8 @@ class DebugOutput:
             return False
         if self.mode == "file":
             cv2.imwrite(os.path.join(self.out_dir, "{:06d}.jpg".format(int(frame_id))), img_bgr)
+        elif self.mode == "http":
+            self._http.push(img_bgr)
         elif self.mode == "rtsp":
             rgb = np.ascontiguousarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
             self._video.Render(self._ju.cudaFromNumpy(rgb))
@@ -70,7 +75,14 @@ class DebugOutput:
         """오버레이를 안 그린 프레임도 카운터는 센다."""
         self.count += 1
 
+    @property
+    def port(self):
+        return self._http.port if self._http is not None else None
+
     def close(self):
+        if self._http is not None:
+            self._http.close()
+            self._http = None
         if self._video is not None and hasattr(self._video, "Close"):
             self._video.Close()
         self._video = None

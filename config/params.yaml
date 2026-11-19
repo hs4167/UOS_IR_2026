@@ -60,6 +60,7 @@ viz:
   update_interval_s: 2.0
 
 debug:
-  output: none            # none | file | rtsp (rtsp는 젯슨 전용)
+  output: none            # none | file | http (브라우저) | rtsp (젯슨 전용, VLC 필요)
   every_n: 10             # file 모드: N프레임마다 저장
+  http_port: 8081         # http 모드: 브라우저로 http://<젯슨IP>:8081 (실시간 모니터는 8080, 결과 웹은 8000)
   rtsp_url: "rtsp://@:8554/debug"
