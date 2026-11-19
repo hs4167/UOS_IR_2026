@@ -201,3 +201,39 @@ def test_warp_mask_follows_same_mapping():
     v = res.valid
     assert m[v & (robot_y > 0.01)].all()
     assert not m[v & (robot_y < -0.01)].any()
+
+
+def test_supersample_removes_thin_line_aliasing():
+    """2 mm 이음새, 위치 추정 오차 5 mm: 칸 중심 한 점 읽기는 이음새가 보였다 안 보였다 한다.
+
+    이음새 대비 140. 한 점 읽기는 칸 값이 거의 대비만큼 튀고, 4x4 평균은 세분 점 1/4만 걸려 대비의 1/4 정도.
+    """
+    cam = c920_like()
+    H = cam.floor_homography()
+    tex = np.full((2000, 2000), 200, np.uint8)
+    tex[:, ::50] = 60  # x 방향 10 cm마다 2 mm 이음새
+    texture = FloorTexture(tex, 0.0, 0.0, 0.002)
+    a, b = (1.0, 2.0, 0.0), (1.005, 2.0, 0.0)
+    jumps = {}
+    for s in (1, 4):
+        pa = warp_to_grid(render(cam, texture, a), H, a, GRID, ROI, supersample=s)
+        pb = warp_to_grid(render(cam, texture, b), H, a, GRID, ROI, supersample=s)  # 실제 b, 추정 a
+        v = pa.valid & pb.valid
+        jumps[s] = np.abs(pa.patch.astype(int) - pb.patch.astype(int))[v].max()
+    assert jumps[1] > 60          # 한 점 읽기: 이음새 칸 값이 크게 튐 (측정 72)
+    assert jumps[4] < 45          # 4x4 평균: 대비의 1/4 수준 (측정 31)
+
+
+@pytest.mark.parametrize("s", [2, 4])
+def test_supersample_keeps_position_and_uniform_color(s):
+    cam = wide_camera()
+    pose = (2.0, 1.5, math.radians(30))
+    target_map = robot_to_map(pose, np.array([[0.40, 0.05]]))[0]
+    img = render(cam, _texture_with_square(target_map), pose)
+    res = warp_to_grid(img, cam.floor_homography(), pose, GRID, ROI, supersample=s)
+    mark = (res.patch > 180) & res.valid
+    rows, cols = np.nonzero(mark)
+    found = cell_to_map(GRID, [[rows.mean() + res.r0, cols.mean() + res.c0]])[0]
+    assert np.linalg.norm(found - target_map) <= 0.01
+    flat = warp_to_grid(np.full_like(img, 77), cam.floor_homography(), pose, GRID, ROI, supersample=s)
+    assert (flat.patch[flat.valid] == 77).all()

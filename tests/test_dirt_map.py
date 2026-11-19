@@ -11,6 +11,7 @@ from floor_dirt.projection import GridMeta, map_to_cell, warp_to_grid
 from synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
+SS = PARAMS["grid"]["supersample"]
 CFG = PARAMS["dirt_map"]
 GRID = GridMeta(0.01, 0.0, 0.0, 50, 40)
 
@@ -152,12 +153,12 @@ def test_synthetic_patrol_produces_one_region_at_paper():
     poses = [(0.5 + 0.03 * i, 1.5 + 0.01 * math.sin(i), 0.0) for i in range(40)]
     for p in poses:
         est = (p[0] + rng.normal(0, 0.003), p[1] + rng.normal(0, 0.003), p[2])
-        fg.add_warp(warp_to_grid(render(cam, FloorTexture(tex, 0, 0, res_t), p), H, est, grid, roi))
+        fg.add_warp(warp_to_grid(render(cam, FloorTexture(tex, 0, 0, res_t), p), H, est, grid, roi, supersample=SS))
 
     dm = DirtMap(grid, CFG)
     for fid, p in enumerate(poses):
         est = (p[0] + rng.normal(0, 0.004), p[1] + rng.normal(0, 0.004), p[2])
-        w = warp_to_grid(render(cam, FloorTexture(dirty, 0, 0, res_t), p), H, est, grid, roi)
+        w = warp_to_grid(render(cam, FloorTexture(dirty, 0, 0, res_t), p), H, est, grid, roi, supersample=SS)
         dm.update_compare(w, compare_warp(w, fg, PARAMS["compare"]), fid)
 
     regions, _ = dm.extract_regions()

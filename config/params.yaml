@@ -9,6 +9,7 @@ roi:                      # base_footprint 기준 근거리 관심 영역 (x 전
 
 grid:
   resolution: 0.01        # 바닥 격자 해상도 (LiDAR 지도는 0.05)
+  supersample: 4          # 칸 하나를 4x4 점으로 읽어 평균 (가는 이음새의 계단 현상 방지)
 
 calibration:              # [0] 카메라 보정 · 바닥 투영
   pattern: [9, 6]         # 체커보드 내부 코너 개수 (가로, 세로). 칸 개수보다 1씩 작다

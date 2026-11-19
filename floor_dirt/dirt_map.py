@@ -73,14 +73,19 @@ class DirtMap:
         self.logodds = np.zeros(shape, np.float32)
         self.n_obs = np.zeros(shape, np.int32)
         self.n_hit = np.zeros(shape, np.int32)
+        self.n_seen = np.zeros(shape, np.int32)        # 화면에 찍힌 횟수 (기준 유무 무관, 제외 영역 빼고)
         self.best_diff = np.zeros(shape, np.float32)   # hit이었던 관측 중 (차이 / 임계값) 최대
         self.best_frame = np.full(shape, -1, np.int32)
 
     # ------------------------------------------------------------ 갱신
 
-    def update(self, r0, c0, observed, hit, score=None, frame_id=-1):
-        # type: (int, int, np.ndarray, np.ndarray, Optional[np.ndarray], int) -> None
-        """창 [r0:, c0:]의 관측 결과 반영. score = 대표 사진 선택용 점수 (클수록 뚜렷)."""
+    def update(self, r0, c0, observed, hit, score=None, frame_id=-1, seen=None):
+        # type: (int, int, np.ndarray, np.ndarray, Optional[np.ndarray], int, Optional[np.ndarray]) -> None
+        """창 [r0:, c0:]의 관측 결과 반영. score = 대표 사진 선택용 점수 (클수록 뚜렷).
+
+        seen = 화면에 찍혔고 제외되지 않은 칸 (기준이 없어도 True). 주지 않으면 observed와 같다.
+        '봤는데 기준이 없는 칸'을 시각화에서 '안 간 곳'과 구분하는 데 쓴다.
+        """
         h, w = observed.shape
         if r0 < 0 or c0 < 0 or r0 + h > self.grid.height or c0 + w > self.grid.width:
             raise ValueError("창이 격자 밖으로 나갑니다: r0={} c0={} size={}".format(r0, c0, (h, w)))
@@ -92,18 +97,20 @@ class DirtMap:
         np.clip(l, self.l_min, self.l_max, out=l)
         self.n_obs[rs, cs] += obs
         self.n_hit[rs, cs] += hit
+        self.n_seen[rs, cs] += obs if seen is None else (seen.astype(bool) | obs)
         if score is not None and frame_id >= 0:
             bd = self.best_diff[rs, cs]
             better = hit & (score > bd)
             bd[better] = score[better]
             self.best_frame[rs, cs][better] = frame_id
 
-    def update_compare(self, result, cmp, frame_id=-1):
-        # type: (WarpResult, CompareResult, int) -> None
-        """compare_warp 결과를 그대로 반영."""
+    def update_compare(self, result, cmp, frame_id=-1, mask=None):
+        # type: (WarpResult, CompareResult, int, Optional[np.ndarray]) -> None
+        """compare_warp 결과를 그대로 반영. mask = compare_warp에 넘긴 것과 같은 제외 마스크."""
         with np.errstate(divide="ignore", invalid="ignore"):
             score = np.where(cmp.thr > 0, cmp.diff / cmp.thr, 0.0).astype(np.float32)
-        self.update(result.r0, result.c0, cmp.observed, cmp.hit, score, frame_id)
+        seen = result.valid if mask is None else (result.valid & mask)
+        self.update(result.r0, result.c0, cmp.observed, cmp.hit, score, frame_id, seen=seen)
 
     # ------------------------------------------------------------ 조회
 
@@ -168,7 +175,7 @@ class DirtMap:
         # type: (str) -> None
         os.makedirs(directory, exist_ok=True)
         tmp = os.path.join(directory, NPZ_NAME + ".tmp.npz")
-        np.savez_compressed(tmp, logodds=self.logodds, n_obs=self.n_obs, n_hit=self.n_hit,
+        np.savez_compressed(tmp, logodds=self.logodds, n_obs=self.n_obs, n_hit=self.n_hit, n_seen=self.n_seen,
                             best_diff=self.best_diff, best_frame=self.best_frame,
                             grid=np.array(self.grid, dtype=np.float64))
         os.replace(tmp, os.path.join(directory, NPZ_NAME))
@@ -180,8 +187,9 @@ class DirtMap:
             g = d["grid"]
             grid = GridMeta(float(g[0]), float(g[1]), float(g[2]), int(g[3]), int(g[4]))
             dm = cls(grid, cfg)
-            for k in ("logodds", "n_obs", "n_hit", "best_diff", "best_frame"):
-                setattr(dm, k, d[k].copy())
+            for k in ("logodds", "n_obs", "n_hit", "n_seen", "best_diff", "best_frame"):
+                if k in d:
+                    setattr(dm, k, d[k].copy())
         return dm
 
 

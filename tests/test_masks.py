@@ -19,6 +19,7 @@ from floor_dirt.projection import (
 from synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
+SS = PARAMS["grid"]["supersample"]
 ROI = PARAMS["roi"]
 GRID = GridMeta(0.01, 0.0, 0.0, 300, 300)
 
@@ -185,11 +186,11 @@ def test_exclusion_removes_object_hits_in_patrol():
     fg = FloorGrid(GRID, min_count=3)
     for i in range(30):
         p = (0.6 + 0.03 * i, 1.5, 0.0)
-        fg.add_warp(warp_to_grid(render(cam, clean, p), H, p, GRID, ROI))
+        fg.add_warp(warp_to_grid(render(cam, clean, p), H, p, GRID, ROI, supersample=SS))
 
     pose = (1.0, 1.5, 0.0)
     img = render(cam, dirty, pose)
-    w = warp_to_grid(img, H, pose, GRID, ROI)
+    w = warp_to_grid(img, H, pose, GRID, ROI, supersample=SS)
     no_mask = compare_warp(w, fg, PARAMS["compare"])
     assert no_mask.hit.sum() > 30                         # 마스크 없으면 가방이 '오염'
 

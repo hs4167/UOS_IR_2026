@@ -8,6 +8,7 @@ from floor_dirt.projection import GridMeta, map_to_cell, warp_to_grid, window_sl
 from synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
+SS = PARAMS["grid"]["supersample"]
 CFG = PARAMS["compare"]
 ROI = PARAMS["roi"]
 SEAM = (110, 115, 120)
@@ -196,13 +197,13 @@ def test_synthetic_patrol_finds_paper_ignores_tiles():
     poses = [(0.6 + 0.03 * i, 1.5, 0.0) for i in range(30)]
     for p in poses:
         est = (p[0] + rng.normal(0, 0.003), p[1] + rng.normal(0, 0.003), p[2])
-        fg.add_warp(warp_to_grid(render(cam, clean, p), H, est, grid, ROI))
+        fg.add_warp(warp_to_grid(render(cam, clean, p), H, est, grid, ROI, supersample=SS))
 
     hits = np.zeros((grid.height, grid.width), np.int32)
     seen = np.zeros_like(hits)
     for p in poses[5:25]:
         est = (p[0] + rng.normal(0, 0.004), p[1] + rng.normal(0, 0.004), p[2])
-        w = warp_to_grid(render(cam, dirty, p), H, est, grid, ROI)
+        w = warp_to_grid(render(cam, dirty, p), H, est, grid, ROI, supersample=SS)
         cr = compare_warp(w, fg, CFG)
         rs, cs = window_slices(w)
         hits[rs, cs] += cr.hit

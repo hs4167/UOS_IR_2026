@@ -192,12 +192,16 @@ def _robot_to_pixel_checked(H, xy, img_w, img_h):
     return uv, in_front
 
 
-def warp_to_grid(img, H, pose, grid, roi, interpolation=cv2.INTER_LINEAR):
-    # type: (np.ndarray, np.ndarray, Pose, GridMeta, dict, int) -> Optional[WarpResult]
+def warp_to_grid(img, H, pose, grid, roi, interpolation=cv2.INTER_LINEAR, supersample=1):
+    # type: (np.ndarray, np.ndarray, Pose, GridMeta, dict, int, int) -> Optional[WarpResult]
     """보정된 이미지를 근거리 ROI가 덮는 격자 창으로 옮긴다.
 
     반환값이 None이면 ROI가 격자와 전혀 겹치지 않는 경우다.
     valid는 칸 중심이 ROI 안에 있고, 이미지 안쪽(테두리 1픽셀 제외)으로 투영되는 칸이다.
+
+    supersample = s > 1이면 칸 하나를 s x s 점으로 읽어 평균낸다 (칸 넓이 평균).
+    s = 1(칸 중심 한 점)이면 칸보다 가는 이음새·줄무늬가 위치가 몇 mm 바뀔 때마다 보였다 안 보였다 해서
+    (계단 현상, aliasing) 줄무늬 오탐이 생긴다 (docs/실험_기록.md). params grid.supersample 사용.
     """
     S_T = grid_matrix(grid) @ pose_matrix(pose)
     corners = apply_homography(S_T, roi_polygon(roi))  # (col, row) 연속 인덱스
@@ -211,7 +215,14 @@ def warp_to_grid(img, H, pose, grid, roi, interpolation=cv2.INTER_LINEAR):
 
     offset = np.array([[1.0, 0.0, -c0], [0.0, 1.0, -r0], [0.0, 0.0, 1.0]])
     M = offset @ S_T @ np.asarray(H, dtype=np.float64)
-    patch = cv2.warpPerspective(img, M, (w, h), flags=interpolation, borderMode=cv2.BORDER_CONSTANT)
+    s = max(int(supersample), 1)
+    if s == 1:
+        patch = cv2.warpPerspective(img, M, (w, h), flags=interpolation, borderMode=cv2.BORDER_CONSTANT)
+    else:
+        # 칸 좌표 x → 세분 좌표 s * (x + 0.5) - 0.5 (세분 점 s x s개의 중심이 칸 안에 고르게 놓임)
+        ss = np.array([[s, 0.0, (s - 1) / 2.0], [0.0, s, (s - 1) / 2.0], [0.0, 0.0, 1.0]])
+        fine = cv2.warpPerspective(img, ss @ M, (w * s, h * s), flags=interpolation, borderMode=cv2.BORDER_CONSTANT)
+        patch = cv2.resize(fine, (w, h), interpolation=cv2.INTER_AREA)
 
     # 칸 중심을 로봇 좌표와 이미지 픽셀로 되돌려 유효 여부를 판정한다
     cols, rows = np.meshgrid(np.arange(w, dtype=np.float64), np.arange(h, dtype=np.float64))
