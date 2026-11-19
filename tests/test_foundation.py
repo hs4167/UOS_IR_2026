@@ -26,7 +26,7 @@ def test_default_params_load_and_required_keys():
 def test_overrides_merge_without_touching_siblings():
     p = config.load_params(overrides={"compare": {"k": 5.0}})
     assert config.get(p, "compare.k") == 5.0
-    assert config.get(p, "compare.method") == "sad_gray"  # 형제 키 유지
+    assert config.get(p, "compare.method") == config.get(config.load_params(), "compare.method")  # 형제 키 유지
 
 
 def test_get_missing_key():

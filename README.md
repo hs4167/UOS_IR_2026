@@ -46,8 +46,9 @@ UOS_IR_2026/
 │   ├── dataset.py          프레임 데이터셋 저장·읽기 (이미지 + 촬영 시점 자세 + LiDAR 점)
 │   ├── projection.py       바닥 투영: 왜곡 보정, 픽셀 → 로봇 → 지도 좌표, 이미지를 바닥 격자로 옮기기
 │   ├── calibration.py      카메라 보정: 체커보드 검출, 내부 보정(K, D), 바닥 투영 행렬(H), 오차 검사
-│   └── floor_grid.py       기준 바닥 격자: 칸별 색(Lab) 평균·분산·관측 횟수 누적, 저장·불러오기, 빈 곳 확인
-│                           (예정) 비교, 제외 마스크, 오염 확률, 재방문
+│   ├── floor_grid.py       기준 바닥 격자: 칸별 색(Lab) 평균·분산·관측 횟수 누적, 저장·불러오기, 빈 곳 확인
+│   └── compare.py          기준과 비교: 칸별 차이(밝기/밝기+색/색), 조명 보정, 1칸 어긋남 흡수, 칸별 임계값
+│                           (예정) 제외 마스크, 오염 확률, 재방문
 ├── launch/                 (예정) ROS 2 launch 파일
 ├── maps/                   지도
 │   └── reference/          기준 바닥 지도 저장 위치 (reference.npz + reference.yaml, 기준 주행 후 생성)
@@ -67,7 +68,8 @@ UOS_IR_2026/
 │   ├── test_foundation.py  config·timing·dataset 테스트
 │   ├── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
 │   ├── test_calibration.py 보정 테스트 (K·D 복원, 보드 방향 정렬, H 정확도, 잘못 잰 원점 검출)
-│   └── test_floor_grid.py  기준 격자 테스트 (평균·분산 정확도, 주행 병합, 저장, 지도 방향, 합성 주행)
+│   ├── test_floor_grid.py  기준 격자 테스트 (평균·분산 정확도, 주행 병합, 저장, 지도 방향, 합성 주행)
+│   └── test_compare.py     비교 테스트 (얼룩·색종이 검출, 어긋남·조명 변화 오탐 없음, 합성 정찰)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)

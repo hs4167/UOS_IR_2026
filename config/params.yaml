@@ -21,11 +21,11 @@ reference:                # [2] 기준 바닥 격자
   coverage_warn: 0.9      # 바닥 칸 중 기준 있는 비율이 이보다 낮으면 재주행 권고
 
 compare:
-  method: sad_gray        # sad_gray | local_mean_removed | chroma_diff
+  method: delta_e         # sad_gray(기준선, 밝기만) | delta_e(밝기+색) | chroma_diff(색만)
+  offset_correction: true # 창마다 밝기 차이 중앙값을 빼서 조명 변화 상쇄 (sad_gray, delta_e)
   neighborhood: 1         # 주변 (2r+1)x(2r+1) 칸 중 최소 차이 사용
-  local_mean_window: 15   # local_mean_removed용 box filter 크기 (칸)
   k: 3.0                  # 임계값 = max(k * sqrt(ref_var), min_thr)
-  min_thr: 8.0            # 최소 임계값 (Lab 단위)
+  min_thr: 8.0            # 최소 임계값 (OpenCV 8비트 Lab 단위)
 
 dirt_map:
   p_hit: 0.7
