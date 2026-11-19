@@ -6,7 +6,8 @@
 #   source scripts/robot.sh       터미널 2~: 환경 설정만 (teleop, ros2 topic 등을 쓸 터미널)
 #
 # 기본값을 바꾸려면 앞에 붙여서 실행:
-#   LDS_MODEL=LDS-02 ./scripts/robot.sh
+#   LDS_MODEL=LDS-01 ./scripts/robot.sh       (기본은 LDS-02. 우리 로봇 LiDAR는 LDS-02로 확인됨)
+#   LD08_WS=~/other_ws ./scripts/robot.sh    (LDS-02 드라이버 작업공간 위치, 기본 ~/ld08_ws)
 #   ROS_DOMAIN_ID=8 source scripts/robot.sh
 
 # source로 불렸는지(환경 설정만) 직접 실행됐는지(bringup까지) 판별
@@ -42,7 +43,19 @@ _robot_setup_env() {
     # 3. 환경 변수 (이미 설정된 값이 있으면 그대로 사용)
     export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"          # 7조. 다른 조 로봇과 통신이 섞이지 않게
     export TURTLEBOT3_MODEL="${TURTLEBOT3_MODEL:-waffle_pi}"
-    export LDS_MODEL="${LDS_MODEL:-LDS-01}"             # LiDAR 라벨 확인 후 LDS-02면 바꿀 것
+    export LDS_MODEL="${LDS_MODEL:-LDS-02}"             # 우리 LiDAR는 LDS-02 (2026-11-19 원시 데이터로 확인)
+
+    # 4. LDS-02 드라이버(ld08_driver) 작업공간. 설치된 bringup에는 들어 있지 않아 따로 빌드한다
+    if [[ "$LDS_MODEL" == "LDS-02" ]]; then
+        local ws="${LD08_WS:-$HOME/ld08_ws}"
+        if [[ -f "$ws/install/setup.bash" ]]; then
+            # shellcheck disable=SC1091
+            source "$ws/install/setup.bash"
+        else
+            echo "[robot.sh] 경고: LDS-02 드라이버 작업공간이 없습니다 ($ws/install/setup.bash)." \
+                 "README '로봇 주행 → LDS-02 드라이버 설치' 참고"
+        fi
+    fi
 
     echo "[robot.sh] ROS_DISTRO=$ROS_DISTRO ROS_DOMAIN_ID=$ROS_DOMAIN_ID" \
          "TURTLEBOT3_MODEL=$TURTLEBOT3_MODEL LDS_MODEL=$LDS_MODEL"
@@ -61,9 +74,18 @@ _robot_check_devices() {
 }
 
 if [[ $_ROBOT_SOURCED -eq 0 ]]; then
-    _robot_setup_env
+    _robot_setup_env || exit 1
     _robot_check_devices
-    echo "[robot.sh] bringup 시작 (종료: Ctrl+C)"
+    if [[ "$LDS_MODEL" == "LDS-02" ]]; then
+        # 설치된 bringup은 LDS_MODEL을 무시하고 LDS-01 드라이버만 띄우므로 우리 launch 파일을 쓴다
+        if ! ros2 pkg prefix ld08_driver >/dev/null 2>&1; then
+            _robot_fail "ld08_driver(LDS-02 드라이버)를 찾을 수 없습니다. README '로봇 주행 → LDS-02 드라이버 설치' 참고"
+        fi
+        _repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        echo "[robot.sh] bringup 시작: LDS-02 (종료: Ctrl+C)"
+        exec ros2 launch "$_repo/launch/robot_lds02.launch.py"
+    fi
+    echo "[robot.sh] bringup 시작: LDS-01 공식 launch (종료: Ctrl+C)"
     exec ros2 launch turtlebot3_bringup robot.launch.py
 fi
 

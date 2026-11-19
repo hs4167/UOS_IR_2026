@@ -114,12 +114,17 @@ class RosInputs:
     def _spin(self):
         try:
             self.rclpy.spin(self.node)
-        except Exception:  # 종료 시 shutdown 예외 무시
-            pass
+        except Exception as e:  # 종료 시 shutdown 예외는 무시, 그 외는 알림
+            if self.rclpy.ok():
+                print("[monitor] ROS 수신 스레드 중단: {!r}".format(e), flush=True)
 
     def _on_scan(self, msg):
-        pts = scan_to_points(msg.ranges, msg.angle_min, msg.angle_increment, msg.range_min, msg.range_max,
-                             sensor_pose=self.lidar_pose)
+        try:
+            pts = scan_to_points(msg.ranges, msg.angle_min, msg.angle_increment, msg.range_min, msg.range_max,
+                                 sensor_pose=self.lidar_pose)
+        except Exception as e:  # 스캔 하나가 이상해도 수신은 계속
+            self.node.get_logger().error("스캔 처리 실패: {!r}".format(e), throttle_duration_sec=5.0)
+            return
         with self.lock:
             self.scan_pts = pts
             self.scan_rate.tick()
@@ -270,6 +275,9 @@ def main():
     ros = None
     if not args.dataset and not args.no_ros:
         ros = RosInputs(args.topic, lidar_pose)
+    if ros is not None:
+        print("[monitor] ROS_DOMAIN_ID={} 에서 /scan, /odom 구독".format(os.environ.get("ROS_DOMAIN_ID", "0(기본)")),
+              flush=True)
     print("[monitor] 보정 {} | 입력: {} | ROS {}".format(
         "ON (ROI·LiDAR 겹치기)" if H is not None else "없음 (카메라 원본만)",
         "dataset" if replay else ("topic " + args.topic) if args.topic else "없음" if args.no_camera else args.camera,

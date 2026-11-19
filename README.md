@@ -20,7 +20,7 @@
 
 | 항목 | 사양 |
 | ---- | ---- |
-| 로봇 | TurtleBot3 Waffle Pi (OpenCR, 360° 2D LiDAR) |
+| 로봇 | TurtleBot3 Waffle Pi (OpenCR, 360° 2D LiDAR LDS-02) |
 | 컴퓨터 | ASUS PE1000N (NVIDIA Jetson Xavier NX 8GB) |
 | 카메라 | Logitech C920 USB 웹캠 (바닥 촬영용, 자동 노출·초점 끄고 고정) |
 | OS / JetPack | Ubuntu 20.04 (L4T r35.6) / JetPack 5.1.5 |
@@ -57,13 +57,14 @@ UOS_IR_2026/
 │   ├── mjpeg_server.py     브라우저용 실시간 영상 서버 (MJPEG over HTTP, 표준 라이브러리만)
 │   └── jetson.py           jetson-inference/utils 불러오기 (conda에서 시스템 경로 보완)
 │                           (예정) 재방문
-├── launch/                 (예정) ROS 2 launch 파일
+├── launch/                 ROS 2 launch 파일
+│   └── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
 ├── maps/                   지도
 │   └── reference/          기준 바닥 지도 저장 위치 (reference.npz + reference.yaml, 기준 주행 후 생성)
 │                           (예정) classroom.pgm / classroom.yaml (LiDAR SLAM 지도)
 ├── ros_nodes/              (예정) ROS 2 노드 (토픽 구독·발행만 하고 처리는 floor_dirt 호출)
 ├── scripts/                실행 스크립트
-│   ├── robot.sh            환경 설정 + TurtleBot3 bringup (source 하면 환경 설정만)
+│   ├── robot.sh            환경 설정 + TurtleBot3 bringup (LDS-02 기본, source 하면 환경 설정만)
 │   ├── teleop.sh           키보드 주행
 │   ├── odom_monitor.sh     오도메트리 확인 (수신 주기, 위치, 속도, 이동 거리)
 │   ├── monitor.sh          실시간 모니터 실행 (conda 유지 + ROS 환경 설정 → live_monitor.py)
@@ -96,6 +97,24 @@ UOS_IR_2026/
 ## 사용법
 
 ### 로봇 주행 (젯슨)
+
+**LDS-02 드라이버 설치 (처음 한 번, conda 끈 상태):**
+
+```bash
+mkdir -p ~/ld08_ws/src && cd ~/ld08_ws/src
+git clone -b ros2-devel https://github.com/ROBOTIS-GIT/ld08_driver.git
+cd ~/ld08_ws
+source /opt/ros/foxy/setup.bash
+colcon build --symlink-install
+```
+
+**전원 켜는 순서:**
+
+```
+1. 로봇 배터리 스위치 ON
+2. OpenCR RESET 버튼 → "도레미파솔라시도" 시작음 확인 (로봇을 움직이지 않음)
+3. bringup 실행
+```
 
 conda를 끈 상태에서 저장소 폴더로 이동한 뒤 실행합니다.
 
