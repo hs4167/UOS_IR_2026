@@ -1,4 +1,4 @@
-# UOS_IR_2026 — 청소 구역 모니터링
+# UOS_IR_2026: 청소 구역 모니터링 로봇
 
 서울시립대학교 인공지능학과 지능형로봇 기말 과제 프로젝트 (7조)
 
@@ -51,8 +51,9 @@ UOS_IR_2026/
 │   ├── masks.py            제외 마스크: LiDAR 점 주변, 로봇 몸체, detectNet 박스, segNet 바닥 아닌 픽셀
 │   ├── dirt_map.py         오염 확률 지도: 칸별 log-odds 누적, 깨끗함/의심/확인 불가, 오염 구역 추출·저장
 │   ├── viz.py              시각화: 결과 지도 dirt_map.png (LiDAR 지도 위 확률·구역·로봇), 구역 사진, 카메라 디버그 오버레이
-│   └── debug_stream.py     디버그 영상 출력: 없음 / 파일 / RTSP(젯슨)
-│                           (예정) 처리 묶음(pipeline), 재방문
+│   ├── debug_stream.py     디버그 영상 출력: 없음 / 파일 / RTSP(젯슨)
+│   └── pipeline.py         처리 묶음: 기준 주행(ReferenceBuilder)·정찰 주행(Patroller). 오프라인·ROS 공용
+│                           (예정) 재방문
 ├── launch/                 (예정) ROS 2 launch 파일
 ├── maps/                   지도
 │   └── reference/          기준 바닥 지도 저장 위치 (reference.npz + reference.yaml, 기준 주행 후 생성)
@@ -76,7 +77,8 @@ UOS_IR_2026/
 │   ├── test_compare.py     비교 테스트 (얼룩·색종이 검출, 어긋남·조명 변화 오탐 없음, 합성 정찰)
 │   ├── test_masks.py       제외 마스크 테스트 (박스·다각형·LiDAR 원, 가짜 jetson-inference, 물체 오탐 제거)
 │   ├── test_dirt_map.py    오염 확률 테스트 (누적·클램프, 상태, 구역 크기·중심, 저장, 합성 정찰 구역 1개)
-│   └── test_viz.py         시각화 테스트 (색·방향·빗금·구역 표시, LiDAR 배경, 오버레이, 구역 사진, 디버그 출력)
+│   ├── test_viz.py         시각화 테스트 (색·방향·빗금·구역 표시, LiDAR 배경, 오버레이, 구역 사진, 디버그 출력)
+│   └── test_e2e.py         합성 강의실 E2E: 기준 주행 → 정찰 → 오염 3개 검출·오탐 0·위치 오차 2 cm 이내
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)
@@ -138,7 +140,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | [0] | 카메라 보정, 바닥 투영 | 🟨 코드 완료 (WSL 합성 검증), 실기 보정 전 |
 | [1] | LiDAR 연결, SLAM 지도 작성 | ⬜ |
 | [2] | 기준 바닥 지도 | 🟨 격자 누적·저장 완료 (WSL), 실행 스크립트는 단위 11 |
-| [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 비교·제외·확률·구역 완료 (WSL), 시각화·실행 스크립트 남음 |
+| [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 처리·시각화·합성 E2E 통과 (WSL), 실행 스크립트·웹 남음 |
 | [4] | 재방문, 처리 여부 검증 | ⬜ |
 
 ## References

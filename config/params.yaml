@@ -39,6 +39,8 @@ dirt_map:
 
 exclusion:                # [3] 비교에서 뺄 영역 (물체·로봇 몸체·바닥 아닌 곳)
   lidar_radius: 0.05      # LiDAR 점 주변 제외 반경 [m]
+  lidar_shadow: 0.30      # LiDAR 점 뒤쪽(그림자)도 이 길이까지 제외 [m]. 카메라가 보는 물체 윗면이 투영되는 곳
+  lidar_origin: [-0.064, 0.0]   # base_footprint 기준 LiDAR 위치 (Waffle Pi base_scan). 실제 TF로 확인
   body_polygon_px: []     # 화면에 찍히는 로봇 몸체 다각형 (왜곡 보정된 이미지 픽셀, [[u, v], ...]). 장착 후 측정
   use_segnet: true        # segNet으로 바닥이 아닌 픽셀 제외 (젯슨 전용)
   segnet_model: fcn-resnet18-sun-640x512

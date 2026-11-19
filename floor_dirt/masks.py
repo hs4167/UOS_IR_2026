@@ -107,16 +107,27 @@ def disk_kernel(radius_cells):
     return ((xx * xx + yy * yy) <= radius_cells * radius_cells + 1e-9).astype(np.uint8)
 
 
-def lidar_exclusion(points_robot, pose, grid, r0, c0, h, w, radius):
-    # type: (np.ndarray, Pose, GridMeta, int, int, int, int, float) -> np.ndarray
-    """LiDAR 점 주변 반경 radius [m] 안의 창 칸을 True (h, w).
+def lidar_exclusion(points_robot, pose, grid, r0, c0, h, w, radius, shadow=0.0, origin=(0.0, 0.0)):
+    # type: (np.ndarray, Pose, GridMeta, int, int, int, int, float, float, Tuple[float, float]) -> np.ndarray
+    """LiDAR 점 주변 반경 radius [m]와 점 뒤쪽 그림자를 덮는 창 칸을 True (h, w).
 
+    shadow > 0이면 LiDAR 위치(origin, base_footprint 기준)에서 각 점을 지나는 직선을 따라
+    점 뒤로 shadow [m]까지도 제외한다.
+    - LiDAR는 물체의 바깥면만 본다. 반경만으로는 물체 가운데가 남는다.
+    - 카메라는 물체의 윗면을 보는데, 이를 바닥 평면에 투영하면 물체보다 '더 먼' 곳, 즉 LiDAR 그림자 쪽에 떨어진다.
     창 바로 밖의 점도 반경이 창 안으로 들어올 수 있으므로 창을 반경만큼 넓혀 찍고 잘라낸다.
     """
     out = np.zeros((h, w), bool)
     pts = np.asarray(points_robot, dtype=np.float64).reshape(-1, 2)
     if len(pts) == 0:
         return out
+    if shadow > 0:
+        o = np.asarray(origin, dtype=np.float64)
+        d = pts - o
+        n = np.linalg.norm(d, axis=1, keepdims=True)
+        d = np.divide(d, n, out=np.zeros_like(d), where=n > 1e-9)
+        t = np.arange(0.0, shadow + 1e-9, grid.resolution * 0.5)
+        pts = (pts[:, None, :] + t[None, :, None] * d[:, None, :]).reshape(-1, 2)
     rad_cells = radius / grid.resolution
     m = int(math.ceil(rad_cells))
     cr = apply_homography(grid_matrix(grid) @ pose_matrix(pose), pts)  # (col, row) 연속, 정수 = 칸 중심
@@ -133,8 +144,9 @@ def lidar_exclusion(points_robot, pose, grid, r0, c0, h, w, radius):
     return canvas[m:m + h, m:m + w].astype(bool)
 
 
-def window_keep_mask(result, image_exclude=None, lidar_points=None, pose=None, grid=None, lidar_radius=0.05):
-    # type: (WarpResult, Optional[np.ndarray], Optional[np.ndarray], Optional[Pose], Optional[GridMeta], float) -> np.ndarray
+def window_keep_mask(result, image_exclude=None, lidar_points=None, pose=None, grid=None, lidar_radius=0.05,
+                     lidar_shadow=0.0, lidar_origin=(0.0, 0.0)):
+    # type: (WarpResult, Optional[np.ndarray], Optional[np.ndarray], Optional[Pose], Optional[GridMeta], float, float, Tuple[float, float]) -> np.ndarray
     """창에서 비교·누적에 쓸 칸 (True = 사용). valid는 포함하지 않는다 (compare_warp·add_warp가 valid와 AND)."""
     h, w = result.valid.shape
     keep = np.ones((h, w), bool)
@@ -145,7 +157,8 @@ def window_keep_mask(result, image_exclude=None, lidar_points=None, pose=None, g
     if lidar_points is not None and len(lidar_points):
         if pose is None or grid is None:
             raise ValueError("LiDAR 제외에는 pose와 grid가 필요합니다")
-        keep &= ~lidar_exclusion(lidar_points, pose, grid, result.r0, result.c0, h, w, lidar_radius)
+        keep &= ~lidar_exclusion(lidar_points, pose, grid, result.r0, result.c0, h, w, lidar_radius,
+                                 lidar_shadow, lidar_origin)
     return keep
 
 

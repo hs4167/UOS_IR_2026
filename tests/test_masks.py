@@ -220,3 +220,18 @@ def test_window_keep_mask_requires_pose_for_lidar():
     with pytest.raises(ValueError):
         window_keep_mask(w, lidar_points=np.array([[0.3, 0.0]]))
     assert window_keep_mask(w).all()
+
+
+def test_lidar_shadow_covers_object_interior():
+    """LiDAR는 물체 바깥면만 본다: 반경만으로는 12 cm 폭 물체의 가운데가 남고, 그림자를 더하면 덮인다."""
+    pose = (1.0, 1.0, 0.0)
+    # 로봇 앞 0.30 m에 놓인 물체(앞면 y -0.06~0.06)의 앞면 점들만 보임
+    front = np.array([[0.30, y] for y in np.linspace(-0.06, 0.06, 7)])
+    win = (90, 120, 40, 60)  # r0, c0, h, w → 창은 로봇 좌표 x 0.195~0.795 근처
+    centre = map_to_cell(GRID, robot_to_map(pose, [[0.40, 0.0]]))[0] - win[:2]   # 물체 가운데(앞면에서 10 cm 뒤)
+    only_radius = lidar_exclusion(front, pose, GRID, *win, radius=0.05)
+    with_shadow = lidar_exclusion(front, pose, GRID, *win, radius=0.05, shadow=0.30, origin=(-0.064, 0.0))
+    assert not only_radius[centre[0], centre[1]]
+    assert with_shadow[centre[0], centre[1]]
+    before = map_to_cell(GRID, robot_to_map(pose, [[0.22, 0.0]]))[0] - win[:2]   # 물체 앞쪽 8 cm (로봇 쪽)
+    assert not with_shadow[before[0], before[1]]                                    # 앞쪽 바닥은 남는다

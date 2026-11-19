@@ -159,3 +159,113 @@ def floor_board_texture(pattern, square, origin_xy, yaw=0.0, res=0.001, extent=(
     img[margin] = 255
     img[inside & black] = 30
     return FloorTexture(img, x0, y0, res)
+
+
+# ---------------------------------------------------------------- 합성 강의실 (E2E)
+
+class Item(NamedTuple):
+    name: str
+    x: float
+    y: float
+    w: float      # x 방향 크기 [m]
+    h: float      # y 방향 크기 [m]
+    color: tuple  # BGR
+
+
+class Scene(NamedTuple):
+    clean: FloorTexture        # 기준 주행 때 바닥 (청소 직후)
+    dirty: FloorTexture        # 정찰 주행 때 바닥 (오염 + 물체 + 조명 변화)
+    dirt: list                 # 찾아야 할 오염 (Item)
+    bag: Item                  # LiDAR에 걸리는 물체
+    shoes: Item                # detectNet이 'person'으로 찾는 물체 (보라색)
+    poses: list                # 주행 자세 (참값)
+
+
+SHOE_COLOR = (200, 30, 200)
+
+
+def _paint(img, res, item, origin=(0.0, 0.0)):
+    x0, x1 = int((item.x - item.w / 2 - origin[0]) / res), int((item.x + item.w / 2 - origin[0]) / res)
+    y0, y1 = int((item.y - item.h / 2 - origin[1]) / res), int((item.y + item.h / 2 - origin[1]) / res)
+    img[y0:y1, x0:x1] = item.color
+
+
+def classroom_scene(seed=0, light_gain=1.10, res=0.002, size=(3.6, 3.0), origin=(-0.5, 0.0)):
+    """30 cm 타일(2 mm 이음새, 타일마다 색 조금씩 다름) + 오래된 얼룩 + 미세 무늬 바닥.
+
+    바닥 그림은 지도 x -0.5~3.1, y 0~3 m. 주행 중 ROI가 바닥 그림 밖으로 나가지 않게 넉넉히 둔다.
+    """
+    rng = np.random.RandomState(seed)
+    w, h = int(size[0] / res), int(size[1] / res)
+    base = np.array([168, 178, 188], np.float32)  # 베이지 (BGR)
+    img = np.empty((h, w, 3), np.float32)
+    tile = int(0.30 / res)
+    for ty in range(0, h, tile):
+        for tx in range(0, w, tile):
+            img[ty:ty + tile, tx:tx + tile] = base + rng.uniform(-5, 5, 3)
+    img += rng.uniform(-3, 3, (h, w, 1))                     # 미세 무늬
+    img[::tile, :] = (120, 125, 130)                          # 이음새
+    img[:, ::tile] = (120, 125, 130)
+    for _ in range(6):                                        # 오래된 얼룩 (기준에도 있음 → 무시해야 함)
+        _paint(img, res, Item("old", rng.uniform(0.5, 2.5), rng.uniform(1.1, 1.9), 0.03, 0.03, (130, 145, 160)), origin)
+    clean = np.clip(img, 0, 255).astype(np.uint8)
+
+    dirt = [Item("red_paper", 1.13, 1.42, 0.06, 0.06, (50, 50, 215)),
+            Item("gray_dust", 1.86, 1.63, 0.05, 0.04, (95, 100, 105)),
+            Item("green_paper", 2.37, 1.25, 0.05, 0.05, (70, 170, 70))]
+    bag = Item("bag", 1.55, 1.15, 0.12, 0.20, (45, 50, 60))
+    shoes = Item("shoes", 2.05, 1.86, 0.10, 0.08, SHOE_COLOR)
+    d = img.copy()
+    for it in dirt + [bag, shoes]:
+        _paint(d, res, it, origin)
+    dirty = np.clip(d * light_gain, 0, 255).astype(np.uint8)
+
+    poses = []
+    for lane, y in enumerate((1.32, 1.68)):                   # 2줄 왕복, 간격 36 cm < ROI 폭 50 cm
+        xs = np.arange(0.35, 2.45, 0.04)
+        if lane % 2:
+            xs = xs[::-1]
+        yaw0 = 0.0 if lane % 2 == 0 else math.pi
+        for i, x in enumerate(xs):
+            poses.append((float(x), y + 0.02 * math.sin(i / 4.0), yaw0 + 0.03 * math.sin(i / 6.0)))
+    return Scene(FloorTexture(clean, origin[0], origin[1], res), FloorTexture(dirty, origin[0], origin[1], res),
+                 dirt, bag, shoes, poses)
+
+
+def item_outline(item, n=24):
+    """물체 둘레 점 (지도 좌표) — LiDAR가 보는 점 흉내."""
+    pts = []
+    for t in np.linspace(0, 1, n, endpoint=False):
+        p = t * 4
+        k, f = int(p), p - int(p)
+        hx, hy = item.w / 2, item.h / 2
+        corners = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy), (-hx, -hy)]
+        (ax, ay), (bx, by) = corners[k], corners[k + 1]
+        pts.append((item.x + ax + (bx - ax) * f, item.y + ay + (by - ay) * f))
+    return np.array(pts)
+
+
+def noisy(pose, rng, xy_sigma, yaw_sigma_deg):
+    return (pose[0] + rng.normal(0, xy_sigma), pose[1] + rng.normal(0, xy_sigma),
+            pose[2] + math.radians(rng.normal(0, yaw_sigma_deg)))
+
+
+def add_sensor_noise(img, rng, amp=3):
+    return np.clip(img.astype(np.int16) + rng.randint(-amp, amp + 1, img.shape), 0, 255).astype(np.uint8)
+
+
+class ColorBlobDetector:
+    """detectNet 대역: 보라색 덩어리를 'person' 박스로 보고한다 (ImageExcluder의 detectnet 자리에 끼움)."""
+
+    def __init__(self, classes=("person",), margin_px=10, min_px=30):
+        self.classes = list(classes)
+        self.margin_px = margin_px
+        self.min_px = min_px
+
+    def exclude_mask(self, bgr):
+        from floor_dirt.masks import Detection, boxes_to_mask
+        m = ((bgr[..., 2].astype(int) > 170) & (bgr[..., 0].astype(int) > 170) & (bgr[..., 1].astype(int) < 90))
+        n, _, stats, _ = cv2.connectedComponentsWithStats(m.astype(np.uint8))
+        dets = [Detection("person", 0.9, float(s[0]), float(s[1]), float(s[0] + s[2]), float(s[1] + s[3]))
+                for s in stats[1:] if s[4] >= self.min_px]
+        return boxes_to_mask(bgr.shape, dets, self.classes, self.margin_px), dets
