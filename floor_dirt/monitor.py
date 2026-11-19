@@ -190,7 +190,9 @@ def power_line(opencr=None, jetson=None, show_jetson=True):
     if jetson is None:
         right = "Jetson in n/a"
     else:
-        right = "Jetson {} {:.2f} V".format(jetson.label, jetson.volts)
+        right = "Jetson {}".format(jetson.label)
+        if jetson.volts is not None:
+            right += " {:.2f} V".format(jetson.volts)
         if jetson.watts is not None:
             right += " {:.1f} W".format(jetson.watts)
     return left + " | " + right
@@ -371,8 +373,12 @@ def dashboard(width, st):
     if j is None:
         _text(img, "n/a", (x, 124), 0.5, C_DIM)
     else:
-        _text(img, "{:.2f} V".format(j.volts) + ("   {:.1f} W".format(j.watts) if j.watts is not None else ""),
-              (x, 124), 0.5, COL_TEXT)
+        parts = []
+        if j.volts is not None:
+            parts.append("{:.2f} V".format(j.volts))
+        if j.watts is not None:
+            parts.append("{:.1f} W".format(j.watts))
+        _text(img, "   ".join(parts) or "--", (x, 124), 0.5, COL_TEXT)
 
     # 3) 움직임
     x = secs[2] + 14

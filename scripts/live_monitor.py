@@ -32,7 +32,7 @@ from floor_dirt.calibration import (  # noqa: E402
 )
 from floor_dirt.config import REPO_ROOT, load_params  # noqa: E402
 from floor_dirt.debug_stream import DebugOutput  # noqa: E402
-from floor_dirt.jetson_power import input_rail, read_rails  # noqa: E402
+from floor_dirt.jetson_power import JetsonPower  # noqa: E402
 from floor_dirt.masks import scan_to_points  # noqa: E402
 from floor_dirt.monitor import (  # noqa: E402
     RateMeter, battery_percent, camera_panel, closest_point, compose_dashboard, image_msg_to_bgr, lidar_topdown,
@@ -297,6 +297,11 @@ def main():
     cam_rate = RateMeter()
     replay_scan_rate = RateMeter()
     jetson_rail, rails_t = None, 0.0
+    jpower = JetsonPower() if replay is None else None
+    if jpower is not None:
+        print("[monitor] 젯슨 전원 정보: {}".format(
+            {"ina3221": "전력 센서(전압·전력)", "tegrastats": "tegrastats(전력만)", "none": "없음 (n/a)"}[jpower.source]),
+            flush=True)
     period = 1.0 / args.fps
     last_send = 0.0
     last_print = time.monotonic()  # 첫 출력은 주기가 잡힌 2초 뒤
@@ -340,7 +345,7 @@ def main():
                 shown = undistort(frame, maps)
                 calibrated = True
             if now - rails_t > 1.0:  # 젯슨 전력 센서는 1초에 한 번만 읽음
-                jetson_rail, rails_t = input_rail(read_rails()), now
+                jetson_rail, rails_t = (jpower.read() if jpower is not None else None), now
             power = power_line(battery, jetson_rail, show_jetson=replay is None)
             lines = status_lines(
                 cam_fps=None if (cam is None and not args.topic and replay is None) else cam_rate.rate(),
@@ -373,6 +378,8 @@ def main():
         pass
     finally:
         out.close()
+        if jpower is not None:
+            jpower.close()
         if cam is not None:
             cam.close()
         if ros is not None:

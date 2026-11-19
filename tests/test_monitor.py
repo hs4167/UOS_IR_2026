@@ -285,3 +285,43 @@ def test_dashboard_speed_bar_direction():
     blue = lambda row: np.nonzero((row[:, 0] > 180) & (row[:, 2] < 100))[0] + x0
     assert blue(row_f).min() >= cx - 1 and blue(row_f).max() > cx + 50     # 전진 = 오른쪽으로
     assert blue(row_b).max() <= cx + 1 and blue(row_b).min() < cx - 50     # 후진 = 왼쪽으로
+
+
+def test_tegrastats_parsing_and_fallback(tmp_path, monkeypatch):
+    from floor_dirt import jetson_power as jp
+    line5 = ("11-19-2026 16:16:27 RAM 2345/6855MB (lfb 2x4MB) CPU [12%@1190,off] GR3D_FREQ 0% "
+             "CPU@45.5C VDD_IN 4523mW/4400mW VDD_CPU_GPU_CV 610mW/610mW VDD_SOC 1424mW/1424mW")
+    r = jp.parse_tegrastats(line5)
+    assert r.label == "VDD_IN" and r.volts is None and r.watts == pytest.approx(4.523)
+    r4 = jp.parse_tegrastats("RAM 1000/3964MB CPU [5%@102] POM_5V_IN 3000/2900 POM_5V_GPU 0/0")
+    assert r4.label == "POM_5V_IN" and r4.watts == pytest.approx(3.0)
+    assert jp.parse_tegrastats("RAM 1/2MB CPU [1%]") is None
+
+    # 센서도 tegrastats도 없는 PC(WSL): 오류 없이 n/a
+    monkeypatch.setattr(jp.shutil, "which", lambda cmd: None)
+    p = jp.JetsonPower(root=str(tmp_path))
+    assert p.source == "none" and p.read() is None
+    p.close()
+
+    from floor_dirt.monitor import dashboard, power_line
+    assert power_line(None, r) == "OpenCR bat -- | Jetson VDD_IN 4.5 W"
+    assert dashboard(1120, {"jetson": r}).shape[1] == 1120
+
+
+def test_tegrastats_reader_with_fake_command(tmp_path):
+    """tegrastats 흉내 스크립트로 백그라운드 읽기 확인."""
+    import os
+    import time
+    from floor_dirt.jetson_power import TegrastatsReader
+    fake = tmp_path / "tegrastats"
+    fake.write_text("#!/bin/sh\nwhile true; do echo 'RAM 1/2MB VDD_IN 5100mW/5000mW'; sleep 0.1; done\n")
+    fake.chmod(0o755)
+    rd = TegrastatsReader(cmd=str(fake))
+    try:
+        t0 = time.time()
+        while rd.latest() is None and time.time() - t0 < 3:
+            time.sleep(0.05)
+        assert rd.latest().watts == pytest.approx(5.1)
+    finally:
+        rd.close()
+    assert not os.path.exists("/proc/{}".format(rd._proc.pid)) or rd._proc.poll() is not None
