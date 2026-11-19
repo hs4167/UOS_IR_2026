@@ -193,3 +193,95 @@ def test_debug_output_http_mode():
         assert data[:2] == b"\xff\xd8"                          # JPEG 시작 표시
     finally:
         out.close()
+
+
+# ---------------------------------------------------------------- 전원 표시
+
+def test_battery_percent_and_power_line():
+    from floor_dirt.jetson_power import Rail
+    from floor_dirt.monitor import battery_percent, power_line
+    assert battery_percent(12.3) == 100.0 and battery_percent(10.5) == 0.0
+    assert battery_percent(11.4) == pytest.approx(50.0) and battery_percent(13.0) == 100.0
+    line = power_line({"voltage": 12.05, "percentage": 86.0}, Rail("VDD_IN", 19.05, 8.2))
+    assert line == "OpenCR bat 12.05 V (86%) | Jetson VDD_IN 19.05 V 8.2 W"
+    assert "LOW" in power_line({"voltage": 11.05, "percentage": None}, None)
+    assert "CHARGE NOW" in power_line({"voltage": 10.9, "percentage": None}, None)
+    assert power_line(None, None) == "OpenCR bat -- | Jetson in n/a"
+    assert power_line(None, None, show_jetson=False) == "OpenCR bat --"
+    lines = status_lines(power="OpenCR bat 12.00 V", cam_ctrl={"AE": "AUTO"})
+    assert lines[2] == "OpenCR bat 12.00 V" and lines[3].startswith("AE")
+
+
+def test_jetson_power_reads_ina3221(tmp_path):
+    from floor_dirt.jetson_power import input_rail, read_rails
+    assert read_rails(str(tmp_path)) == []                     # 센서 없는 보드
+    other = tmp_path / "hwmon0"
+    other.mkdir()
+    (other / "name").write_text("cpu_thermal\n")
+    dev = tmp_path / "hwmon3"
+    dev.mkdir()
+    (dev / "name").write_text("ina3221\n")
+    for n, (label, mv, ma) in enumerate([("VDD_IN", 19040, 450), ("VDD_CPU_GPU_CV", 19040, 120), ("NC", 0, 0)], 1):
+        (dev / "in{}_label".format(n)).write_text(label + "\n")
+        (dev / "in{}_input".format(n)).write_text(str(mv) + "\n")
+        (dev / "curr{}_input".format(n)).write_text(str(ma) + "\n")
+    rails = read_rails(str(tmp_path))
+    assert [r.label for r in rails] == ["VDD_IN", "VDD_CPU_GPU_CV"]    # NC(연결 안 됨)는 제외
+    r = input_rail(rails)
+    assert r.label == "VDD_IN" and r.volts == pytest.approx(19.04) and r.watts == pytest.approx(19.04 * 0.45)
+
+
+# ---------------------------------------------------------------- 계기판
+
+def test_level_colors():
+    from floor_dirt.monitor import C_BAD, C_OFF, C_OK, C_WARN, level
+    assert level(29.0, 20, 1) == C_OK and level(5.0, 20, 1) == C_WARN and level(0.0, 20, 1) == C_BAD
+    assert level(None, 20, 1) == C_OFF
+    assert level(0.6, 0.5, 0.25) == C_OK and level(0.3, 0.5, 0.25) == C_WARN and level(0.1, 0.5, 0.25) == C_BAD
+
+
+def _near(img, v, u, col, tol=30):
+    return np.abs(img[v, u].astype(int) - np.array(col)).max() <= tol
+
+
+def test_dashboard_lights_and_bars():
+    from floor_dirt.jetson_power import Rail
+    from floor_dirt.monitor import C_BAD, C_OFF, C_OK, C_WARN, DASH_H, compose_dashboard, dashboard
+    good = dict(cam_on=True, cam_fps=30.0, ros_on=True, scan_hz=5.0, scan_age=0.1, n_points=300,
+                closest=(1.5, 0.0), odom={"x": 0, "y": 0, "yaw": 0, "v": 0.2, "w": 0.0}, odom_age=0.05,
+                battery={"voltage": 12.1, "percentage": 89}, jetson=Rail("VDD_IN", 19.0, 8.0),
+                cam_ctrl={"AE": "MANUAL", "AF": "OFF", "AWB": "OFF"}, calibrated=True)
+    img = dashboard(1120, good)
+    assert img.shape == (DASH_H, 1120, 3)
+    x = 14 + 9
+    for y in (40, 64, 88, 112):                                   # CAM, LiDAR, ODOM, CALIB 신호등
+        assert _near(img, y, x, C_OK)
+
+    bad = dict(cam_on=True, cam_fps=0.0, ros_on=True, scan_age=None, odom=None,
+               battery={"voltage": 10.8, "percentage": 17}, cam_ctrl={"AE": "AUTO", "AF": "AUTO", "AWB": "AUTO"})
+    img = dashboard(1120, bad)
+    for y in (40, 64, 88):
+        assert _near(img, y, x, C_BAD)
+    assert _near(img, 112, x, C_OFF)                              # 보정 없음 = 회색
+    bx = int(1120 * 0.26) + 14 + 5
+    assert _near(img, 45, bx, C_BAD)                              # 배터리 아이콘 빨강
+    chips = img[104:127, int(1120 * 0.76) + 14:]
+    assert (np.abs(chips.astype(int) - np.array(C_WARN)).max(axis=2) <= 30).sum() > 200   # 자동 = 노랑 칩
+
+    off = dashboard(1120, {})                                     # 아무 정보 없음: 오류 없이 회색
+    assert off.shape == (DASH_H, 1120, 3)
+    full = compose_dashboard(np.zeros((480, 640, 3), np.uint8), np.zeros((480, 480, 3), np.uint8), good)
+    assert full.shape == (480 + DASH_H, 1120, 3)
+
+
+def test_dashboard_speed_bar_direction():
+    from floor_dirt.monitor import dashboard
+    base = dict(ros_on=True, odom_age=0.0)
+    fwd = dashboard(1120, dict(base, odom={"x": 0, "y": 0, "yaw": 0, "v": 0.2, "w": 0.0}))
+    back = dashboard(1120, dict(base, odom={"x": 0, "y": 0, "yaw": 0, "v": -0.2, "w": 0.0}))
+    x0, x1 = int(1120 * 0.50) + 14, int(1120 * 0.76) - 14
+    cx = (x0 + x1) // 2
+    row_f, row_b = fwd[53, x0:x1], back[53, x0:x1]
+    blue = lambda row: np.nonzero((row[:, 0] > 180) & (row[:, 2] < 100))[0] + x0
+    assert blue(row_f).min() >= cx - 1 and blue(row_f).max() > cx + 50     # 전진 = 오른쪽으로
+    assert blue(row_b).max() <= cx + 1 and blue(row_b).min() < cx - 50     # 후진 = 왼쪽으로

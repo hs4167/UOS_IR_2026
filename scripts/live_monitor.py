@@ -32,10 +32,12 @@ from floor_dirt.calibration import (  # noqa: E402
 )
 from floor_dirt.config import REPO_ROOT, load_params  # noqa: E402
 from floor_dirt.debug_stream import DebugOutput  # noqa: E402
+from floor_dirt.jetson_power import input_rail, read_rails  # noqa: E402
 from floor_dirt.masks import scan_to_points  # noqa: E402
 from floor_dirt.monitor import (  # noqa: E402
-    RateMeter, camera_panel, closest_point, compose, image_msg_to_bgr, lidar_topdown, quaternion_to_yaw,
-    status_lines,
+    RateMeter, battery_percent, camera_panel, closest_point, compose_dashboard, image_msg_to_bgr, lidar_topdown,
+    power_line,
+    quaternion_to_yaw, status_lines,
 )
 from floor_dirt.projection import undistort, undistort_maps  # noqa: E402
 
@@ -89,7 +91,7 @@ class RosInputs:
             import rclpy
             from nav_msgs.msg import Odometry
             from rclpy.qos import qos_profile_sensor_data
-            from sensor_msgs.msg import Image, LaserScan
+            from sensor_msgs.msg import BatteryState, Image, LaserScan
         except ImportError as e:
             raise SystemExit("rclpy를 불러올 수 없습니다: {}\n"
                              "  source /opt/ros/foxy/setup.bash 후 실행하거나 ./scripts/monitor.sh 를 쓰세요."
@@ -102,10 +104,13 @@ class RosInputs:
         self.scan_pts = None
         self.scan_rate = RateMeter()
         self.odom = None
+        self.odom_rate = RateMeter()
         self.image = None
         self.image_rate = RateMeter()
+        self.battery = None
         self.node.create_subscription(LaserScan, "/scan", self._on_scan, qos_profile_sensor_data)
         self.node.create_subscription(Odometry, "/odom", self._on_odom, qos_profile_sensor_data)
+        self.node.create_subscription(BatteryState, "/battery_state", self._on_battery, qos_profile_sensor_data)
         if image_topic:
             self.node.create_subscription(Image, image_topic, self._on_image, qos_profile_sensor_data)
         self.thread = threading.Thread(target=self._spin, daemon=True)
@@ -134,6 +139,12 @@ class RosInputs:
         with self.lock:
             self.odom = {"x": p.x, "y": p.y, "yaw": quaternion_to_yaw(q.x, q.y, q.z, q.w),
                          "v": t.linear.x, "w": t.angular.z}
+            self.odom_rate.tick()
+
+    def _on_battery(self, msg):
+        # percentage 필드는 노드마다 0~1 / 0~100으로 달라서 쓰지 않고, 전압에서 직접 계산한다
+        with self.lock:
+            self.battery = {"voltage": float(msg.voltage), "percentage": battery_percent(float(msg.voltage))}
 
     def _on_image(self, msg):
         try:
@@ -147,7 +158,7 @@ class RosInputs:
 
     def snapshot(self):
         with self.lock:
-            return self.scan_pts, self.scan_rate, self.odom, self.image
+            return self.scan_pts, self.scan_rate, self.odom, self.image, self.battery
 
     def close(self):
         try:
@@ -285,13 +296,14 @@ def main():
 
     cam_rate = RateMeter()
     replay_scan_rate = RateMeter()
+    jetson_rail, rails_t = None, 0.0
     period = 1.0 / args.fps
     last_send = 0.0
     last_print = time.monotonic()  # 첫 출력은 주기가 잡힌 2초 뒤
     n = 0
     try:
         while True:
-            frame, ctrl, scan_pts, odom, scan_rate = None, None, None, None, None
+            frame, ctrl, scan_pts, odom, scan_rate, battery = None, None, None, None, None, None
             if replay is not None:
                 item = replay.next()
                 if item is None:
@@ -313,7 +325,7 @@ def main():
                 else:
                     time.sleep(0.01)
                 if ros is not None:
-                    scan_pts, scan_rate, odom, img = ros.snapshot()
+                    scan_pts, scan_rate, odom, img, battery = ros.snapshot()
                     if args.topic:
                         frame = img
                         cam_rate = ros.image_rate
@@ -327,15 +339,31 @@ def main():
             if frame is not None and H is not None and (frame.shape[1], frame.shape[0]) == (intr.width, intr.height):
                 shown = undistort(frame, maps)
                 calibrated = True
+            if now - rails_t > 1.0:  # 젯슨 전력 센서는 1초에 한 번만 읽음
+                jetson_rail, rails_t = input_rail(read_rails()), now
+            power = power_line(battery, jetson_rail, show_jetson=replay is None)
             lines = status_lines(
                 cam_fps=None if (cam is None and not args.topic and replay is None) else cam_rate.rate(),
                 scan_hz=None if (ros is None and replay is None) else (scan_rate.rate() if scan_rate else 0.0),
                 n_points=0 if scan_pts is None else len(scan_pts),
                 closest=None if scan_pts is None else closest_point(scan_pts),
                 odom=odom, cam_ctrl=ctrl, calibrated=calibrated,
-                scan_age=None if scan_rate is None else scan_rate.age())
-            img = compose(camera_panel(shown, H if calibrated else None, roi, scan_pts),
-                          lidar_topdown(scan_pts, range_m=args.range, roi=roi), lines)
+                scan_age=None if scan_rate is None else scan_rate.age(), power=power)
+            st = {
+                "cam_on": cam is not None or bool(args.topic) or replay is not None,
+                "cam_fps": cam_rate.rate() if frame is not None or cam is not None else None,
+                "ros_on": ros is not None or replay is not None,
+                "scan_hz": scan_rate.rate() if scan_rate else None,
+                "scan_age": None if scan_rate is None or scan_rate.age() == float("inf") else scan_rate.age(),
+                "n_points": 0 if scan_pts is None else len(scan_pts),
+                "closest": None if scan_pts is None else closest_point(scan_pts),
+                "odom": odom,
+                "odom_age": 0.0 if replay is not None else (ros.odom_rate.age() if ros is not None else None),
+                "battery": battery, "jetson": jetson_rail if replay is None else None,
+                "cam_ctrl": ctrl, "calibrated": calibrated,
+            }
+            img = compose_dashboard(camera_panel(shown, H if calibrated else None, roi, scan_pts),
+                                    lidar_topdown(scan_pts, range_m=args.range, roi=roi), st)
             out.push(n, img)
             n += 1
             if now - last_print > 2.0:
