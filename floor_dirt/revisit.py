@@ -235,3 +235,84 @@ def write_report(path, plan, results, extra=None):
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
     return data
+
+
+# ---------------------------------------------------------------- 재방문 진행 (재방문 노드가 사용)
+
+class Mission:
+    """계획의 구역을 차례로: 이동 → 멈춰서 기다림(흔들림 가라앉기) → n장 촬영 → 다음 구역.
+
+    시각은 모두 ROS 시각(초)으로 받는다. 이동 중에 찍힌 사진이 섞이지 않도록 '촬영 시작 시각 이후' 사진만 쓴다.
+    이동 실패·설 자리 없음·시간 초과는 기록하고 다음 구역으로 넘어간다 (판정은 '확인 불가').
+    """
+
+    IDLE, NAVIGATING, SETTLING, SHOOTING, DONE = "idle", "navigating", "settling", "shooting", "done"
+
+    def __init__(self, plan, n_shots=5, settle_s=1.0, shoot_timeout_s=15.0):
+        self.plan = [p for p in plan]
+        self.n_shots = int(n_shots)
+        self.settle_s = float(settle_s)
+        self.shoot_timeout_s = float(shoot_timeout_s)
+        self.i = 0
+        self.state = self.IDLE if self.plan else self.DONE
+        self.t = None
+        self.log = []      # type: List[Dict]
+        self._cur = None
+
+    def current(self):
+        return self.plan[self.i] if self.i < len(self.plan) else None
+
+    def _finish_step(self, **info):
+        p = self.current()
+        rec = {"step": p["step"], "id": p["id"]}
+        rec.update(self._cur or {})
+        rec.update(info)
+        self.log.append(rec)
+        self.i += 1
+        self._cur = None
+        self.state = self.IDLE if self.i < len(self.plan) else self.DONE
+
+    def next_goal(self, now):
+        """IDLE이면 다음 목표 자세를 돌려주고 NAVIGATING으로. 설 자리가 없는 구역은 건너뛴다."""
+        while self.state == self.IDLE:
+            p = self.current()
+            if p.get("goal") is None:
+                self._cur = {"nav": "no_goal"}
+                self._finish_step(shots=0, missed=0)
+                continue
+            self.state, self.t = self.NAVIGATING, now
+            self._cur = {"nav": "pending", "shots": 0, "missed": 0}
+            return tuple(p["goal"])
+        return None
+
+    def nav_done(self, success, now, detail=""):
+        if self.state != self.NAVIGATING:
+            return
+        if success:
+            self._cur["nav"] = "ok"
+            self._cur["nav_s"] = round(now - self.t, 1)
+            self.state, self.t = self.SETTLING, now
+        else:
+            self._cur["nav"] = "failed" + (": " + detail if detail else "")
+            self._finish_step()
+
+    def tick(self, now):
+        if self.state == self.SETTLING and now - self.t >= self.settle_s:
+            self.state, self.t = self.SHOOTING, now
+        elif self.state == self.SHOOTING and now - self.t >= self.shoot_timeout_s:
+            self._finish_step(timeout=True)
+
+    def want_frame(self, stamp):
+        """이 시각에 찍힌 사진을 쓸지 (촬영 중이고, 멈춘 뒤에 찍힌 사진만)."""
+        return self.state == self.SHOOTING and stamp >= self.t
+
+    def frame_done(self, region_ids):
+        """want_frame으로 받은 사진을 처리한 뒤 호출. 지금 구역이 사진에 보였으면 1장으로 센다."""
+        if self.state != self.SHOOTING:
+            return
+        if self.current()["id"] in region_ids:
+            self._cur["shots"] += 1
+        else:
+            self._cur["missed"] += 1
+        if self._cur["shots"] >= self.n_shots:
+            self._finish_step()

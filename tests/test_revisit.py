@@ -166,3 +166,101 @@ def test_synthetic_revisit_end_to_end(tmp_path):
 
     from floor_dirt.web import run_summary
     assert run_summary(str(tmp_path), "patrol")["revisit"]["summary"]["cleaned"] == 2
+
+
+# ---------------------------------------------------------------- 재방문 진행 (노드 로직)
+
+from floor_dirt.revisit import Mission  # noqa: E402
+
+
+def _plan():
+    return [{"step": 1, "id": 4, "goal": [1.0, 0.0, 0.0]},
+            {"step": 2, "id": 7, "goal": None},                      # 설 자리 없음
+            {"step": 3, "id": 2, "goal": [2.0, 1.0, 1.57]}]
+
+
+def test_mission_sequence_and_failures():
+    m = Mission(_plan(), n_shots=2, settle_s=1.0, shoot_timeout_s=5.0)
+    assert m.next_goal(0.0) == (1.0, 0.0, 0.0) and m.state == Mission.NAVIGATING
+    assert m.next_goal(0.1) is None                                  # 이동 중엔 새 목표 없음
+    assert not m.want_frame(0.5)
+    m.nav_done(True, 10.0)
+    m.tick(10.5)
+    assert m.state == Mission.SETTLING and not m.want_frame(10.6)    # 멈춘 직후는 흔들림 대기
+    m.tick(11.0)
+    assert m.state == Mission.SHOOTING
+    assert not m.want_frame(10.9) and m.want_frame(11.1)             # 이동 중 찍힌 사진은 안 씀
+    m.frame_done([9])                                                # 구역이 안 보인 사진
+    m.frame_done([4])
+    m.frame_done([4, 9])
+    assert m.state == Mission.IDLE and m.log[0] == {"step": 1, "id": 4, "nav": "ok", "nav_s": 10.0,
+                                                    "shots": 2, "missed": 1}
+    # 설 자리 없는 구역은 건너뛰고 다음 구역 목표
+    assert m.next_goal(12.0) == (2.0, 1.0, 1.57)
+    assert m.log[1]["nav"] == "no_goal"
+    m.nav_done(False, 20.0, "status 6")
+    assert m.state == Mission.DONE and m.log[2]["nav"] == "failed: status 6"
+
+
+def test_mission_shoot_timeout_and_empty():
+    m = Mission([{"step": 1, "id": 1, "goal": [0, 0, 0]}], n_shots=5, settle_s=0.0, shoot_timeout_s=3.0)
+    m.next_goal(0.0)
+    m.nav_done(True, 1.0)
+    m.tick(1.0)
+    m.frame_done([1])
+    m.tick(4.5)
+    assert m.state == Mission.DONE and m.log[0]["timeout"] is True and m.log[0]["shots"] == 1
+    assert Mission([]).state == Mission.DONE
+
+
+def test_node_logic_with_synthetic_frames(tmp_path):
+    """재방문 노드가 하는 일을 ROS 없이: 계획의 설 자리에서 찍은 합성 사진 → 진행 로직 → 판정."""
+    from floor_dirt.dataset import Frame
+    from floor_dirt.dirt_map import DirtMap
+    from floor_dirt.pipeline import RevisitProcessor
+    from floor_dirt.revisit import plan_revisit
+    from floor_dirt.synthetic import FloorTexture, render, wide_camera
+
+    grid = GridMeta(0.01, 0.0, 0.0, 300, 300)
+    tex = np.full((1500, 1500, 3), (150, 160, 170), np.uint8)
+    ref = FloorGrid(grid, 1)
+    cam = wide_camera()
+    H = cam.floor_homography()
+    params = load_params()
+    params["exclusion"] = dict(params["exclusion"], use_segnet=False, use_detectnet=False)
+    from floor_dirt.projection import warp_to_grid
+    for x in np.arange(0.4, 2.4, 0.05):
+        for y in (1.0, 1.5, 2.0):
+            p = (float(x), y, 0.0)
+            ref.add_warp(warp_to_grid(render(cam, FloorTexture(tex, 0, 0, 0.002), p), H, p, grid, params["roi"]))
+    # 정찰에서 찾은 두 구역 (한 곳은 청소됨, 한 곳은 아님)
+    dm = DirtMap(grid, params["dirt_map"])
+    for (cx, cy) in ((1.2, 1.0), (2.0, 2.0)):
+        r0, c0 = int(cy / 0.01) - 3, int(cx / 0.01) - 3
+        for _ in range(3):
+            dm.update(r0, c0, np.ones((6, 6), bool), np.ones((6, 6), bool))
+    regions, labels = dm.extract_regions()
+    dirty = tex.copy()
+    dirty[1990 // 2 - 15:1990 // 2 + 15, 2000 // 2 - 15:2000 // 2 + 15] = (40, 40, 200)   # (2.0, 2.0) 그대로
+    plan = plan_revisit(regions, (0.4, 1.5, 0.0), float(params["revisit"]["standoff"]))
+    rp = RevisitProcessor(params, ref, H, labels)
+    m = Mission(plan, n_shots=3, settle_s=0.5, shoot_timeout_s=5.0)
+    t, fid = 0.0, 0
+    while m.state != Mission.DONE:
+        goal = m.next_goal(t)
+        m.nav_done(True, t + 5.0)                                   # 이동 성공 가정
+        t += 5.0
+        while m.state in (Mission.SETTLING, Mission.SHOOTING):
+            t += 0.2
+            m.tick(t)
+            if m.want_frame(t):
+                img = render(cam, FloorTexture(dirty, 0, 0, 0.002), goal)
+                ids = rp.process(Frame(fid, t, goal, img, None))
+                fid += 1
+                m.frame_done(ids)
+    res = {r["id"]: r for r in rp.verifier.results([g.id for g in regions], **{
+        "restore_ratio": 0.9, "min_coverage": 0.5, "hit_frac": 0.5})}
+    by_pos = {tuple(np.round(g.center, 1)): g.id for g in regions}
+    assert res[by_pos[(1.2, 1.0)]]["status"] == CLEANED
+    assert res[by_pos[(2.0, 2.0)]]["status"] == NEEDS_CLEANING
+    assert all(e["shots"] == 3 and e["missed"] == 0 for e in m.log)  # 설 자리에서 구역이 매번 화면에 들어옴

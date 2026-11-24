@@ -64,7 +64,7 @@ UOS_IR_2026/
 │   ├── recording.py        녹화 로직: 저장 주기, 사진·스캔 시각 짝짓기, TF 대기열
 │   ├── occupancy.py        LiDAR 지도: OccupancyGrid → pgm/yaml 저장, 지도 뷰어 그림
 │   ├── tegralog.py         젯슨 자원 기록: 녹화·처리 중 tegrastats.log 저장, 메모리·CPU·GPU·온도 요약
-│   └── revisit.py          재방문: 최단 방문 순서, 설 자리(벽 피하기), 구역별 복원율 판정, 기준 갱신(백업)
+│   └── revisit.py          재방문: 최단 방문 순서, 설 자리(벽 피하기), 진행 단계(이동→멈춤→촬영), 복원율 판정, 기준 갱신(백업)
 ├── launch/                 ROS 2 launch 파일
 │   ├── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
 │   └── localization.launch.py 위치 추정: 저장된 지도 + AMCL (RViz 없음)
@@ -75,7 +75,8 @@ UOS_IR_2026/
 │   ├── camera_node.py      웹캠 → /image_raw (시작 시 고정 설정 적용)
 │   ├── dataset_recorder.py 주행 녹화: 사진 + 찍은 순간의 위치(TF) + LiDAR → data/<run>/
 │   ├── map_viewer.py       지도 뷰어 (RViz 대신): 지도 + 로봇 + LiDAR → 브라우저 :8082
-│   └── map_saver.py        /map → maps/<이름>.pgm/yaml (기존 지도 백업)
+│   ├── map_saver.py        /map → maps/<이름>.pgm/yaml (기존 지도 백업)
+│   └── revisit_node.py     재방문: 설 자리로 Nav2 이동 → 멈춤 → 촬영 → 복원율 판정 → revisit.json
 ├── scripts/                실행 스크립트
 │   ├── robot.sh            환경 설정 + TurtleBot3 bringup (LDS-02 기본, source 하면 환경 설정만)
 │   ├── teleop.sh           키보드 주행
@@ -90,12 +91,14 @@ UOS_IR_2026/
 │   ├── map_view.sh         지도 뷰어 실행
 │   ├── localize.sh         위치 추정 (지도 + AMCL, 시작 위치 지정)
 │   ├── set_pose.sh         위치 추정에 현재 위치 다시 알려주기
+│   ├── nav.sh              Nav2 실행 (지도 + 위치 추정 + 경로 주행, RViz 없음, 시작 위치 자동 알림)
+│   ├── revisit.sh          재방문 노드 실행
 │   ├── live_monitor.py     카메라 + LiDAR + odom을 한 화면으로 송출 (노트북 브라우저로 확인)
 │   ├── capture_images.py   웹캠으로 보정용 사진 촬영 (화면 없이 자동/Enter 촬영)
 │   ├── calibrate_intrinsics.py  체커보드 사진들 → camera_intrinsics.yaml
 │   ├── calibrate_floor.py  바닥 보드 사진 + 실측 좌표 → floor_homography.yaml
 │   └── check_floor_projection.py  다른 위치 실측점으로 투영 오차 검사 (통과/실패)
-│                           (예정) 재방문
+
 ├── tests/                  floor_dirt 단위 테스트
 │   ├── test_foundation.py  config·timing·dataset 테스트
 │   ├── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
@@ -109,7 +112,7 @@ UOS_IR_2026/
 │   ├── test_offline.py     오프라인 실행 테스트 (평가 짝짓기, 결과 웹, 스크립트 전체 흐름)
 │   ├── test_recording.py   녹화 준비 테스트 (C920 컨트롤 해석·적용 순서, 주기·짝짓기·대기열, 노드 문법)
 │   ├── test_tegralog.py    자원 기록 테스트 (젯슨 실제 출력 해석, 요약, 가짜 tegrastats, 웹 표시)
-│   ├── test_revisit.py     재방문 테스트 (순서 최적성, 설 자리, 복원율, 기준 갱신, 합성 재방문 전체)
+│   ├── test_revisit.py     재방문 테스트 (순서 최적성, 설 자리, 복원율, 기준 갱신, 진행 단계, 노드 로직 모의 실행)
 │   ├── test_mapping.py     지도 테스트 (저장한 SLAM 지도 방향, 뷰어 그림, AMCL 설정)
 │   └── test_monitor.py     모니터 테스트 (LiDAR 그림 방향, 카메라 위 LiDAR 점, 상태 줄, 메시지 변환, 재생 실행, 브라우저 스트림)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
@@ -254,6 +257,35 @@ conda activate test1001
 ./scripts/teleop.sh
 ```
 
+### 재방문 (젯슨, Nav2 자동 이동)
+
+**터미널 1 (bringup, conda 끔):**
+
+```bash
+./scripts/robot.sh
+```
+
+**터미널 2 (Nav2, conda 끔, 로봇을 SLAM 시작 자리에 두고):**
+
+```bash
+./scripts/nav.sh
+```
+
+**터미널 3 (카메라 노드):**
+
+```bash
+conda activate test1001
+./scripts/camera.sh
+```
+
+**터미널 4 (재방문, 끝나면 자동 종료):**
+
+```bash
+conda activate test1001
+python scripts/plan_revisit.py --results results/<정찰 run> --map maps/classroom.yaml
+./scripts/revisit.sh --results results/<정찰 run> --record <재방문 run> --promote
+```
+
 ### 카메라 보정 (젯슨, conda `test1001`)
 
 체커보드 칸 크기를 자로 재서 `config/params.yaml`의 `calibration.square`에 넣은 뒤 진행합니다.
@@ -342,7 +374,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | [1] | LiDAR 연결, SLAM 지도 작성 | 🟨 LiDAR(LDS-02)·모니터·SLAM/위치 추정 스크립트 완료, 실제 지도 작성 남음 |
 | [2] | 기준 바닥 지도 | 🟨 처리·실행 스크립트 완료 (WSL 합성 검증), 실제 주행 녹화 남음 |
 | [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 처리·실행·평가·결과 웹 완료 (WSL 합성: 3/3 검출, 오탐 0), 실제 주행 남음 |
-| [4] | 재방문, 처리 여부 검증 | 🟨 계획·판정·기준 갱신 완료 (WSL 합성: 3구역 모두 정답), 재방문 노드(Nav2) 남음 |
+| [4] | 재방문, 처리 여부 검증 | 🟨 계획·판정·기준 갱신·재방문 노드 완료 (WSL 합성·모의 실행), 실기 남음 |
 
 ## References
 
