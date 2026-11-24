@@ -45,6 +45,9 @@ def main():
         excluder = ImageExcluder(params["exclusion"], detectnet=ColorBlobDetector(margin_px=10))
     regions = run_patrol(args.run, args.reference, out, params, H, maps, map_yaml=args.map,
                          debug_output=args.debug, update_interval=args.update, excluder=excluder)
+    from floor_dirt.tegralog import format_summary, summarize_file
+    if os.path.exists(os.path.join(out, "tegrastats.log")):
+        print(format_summary(summarize_file(os.path.join(out, "tegrastats.log"))))
     print("결과: {} (오염 구역 {}개)".format(out, len(regions)))
     for r in regions:
         print("  #{:<2} 중심 ({:.2f}, {:.2f}) m  크기 {:.0f}x{:.0f} cm  확률 {:.2f}".format(

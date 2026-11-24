@@ -36,6 +36,9 @@ def main():
     run = os.path.basename(os.path.normpath(args.run))
     cov = run_reference(args.run, args.map, args.out, params, H, maps, merge=args.merge,
                         results_dir=args.results or os.path.join(REPO_ROOT, "results", run))
+    if cov.get("resources"):
+        from floor_dirt.tegralog import format_summary
+        print(format_summary(cov["resources"]))
     warn = float(params["reference"]["coverage_warn"])
     print("기준 저장: {}".format(args.out))
     print("바닥 중 기준이 있는 비율: {:.1%} (빈 곳 {:.2f} m²)".format(cov["covered_ratio"], cov["missing_area_m2"]))

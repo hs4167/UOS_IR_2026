@@ -72,6 +72,9 @@ def run_summary(root, run):
         with open(ev, "r", encoding="utf-8") as f:
             data["evaluation"] = json.load(f)
     data["timing"] = timing_medians(os.path.join(d, "timing.csv"))
+    from floor_dirt.tegralog import summarize_file
+    data["resources"] = summarize_file(os.path.join(d, "tegrastats.log")) if os.path.isfile(
+        os.path.join(d, "tegrastats.log")) else None
     data["map_mtime"] = os.path.getmtime(os.path.join(d, "dirt_map.png")) if os.path.isfile(
         os.path.join(d, "dirt_map.png")) else None
     return data
@@ -201,6 +204,7 @@ PAGE = r"""<!doctype html>
     <div class="card"><h2>오염 구역</h2><div id="regions"></div></div>
     <div class="card" id="evalcard" hidden><h2>평가 (정답과 비교)</h2><div id="eval"></div></div>
     <div class="card"><h2>프레임당 처리 시간 (중앙값)</h2><div id="timing"></div></div>
+    <div class="card" id="rescard" hidden><h2>젯슨 자원 사용 (tegrastats)</h2><div id="res"></div></div>
   </section>
 </main>
 <script>
@@ -251,6 +255,15 @@ async function refresh() {
   $("timing").innerHTML = t ? `<table>` + Object.entries(t).filter(([k]) => k !== "frames")
       .map(([k, v]) => `<tr><td>${k === "total" ? "<b>합계</b>" : k}</td><td class="num">${v} ms</td></tr>`).join("") + `</table>`
     : `<p class="empty">timing.csv 없음</p>`;
+  const rs = d.resources;
+  $("rescard").hidden = !rs;
+  if (rs) {
+    const temps = Object.entries(rs.temp_max_c || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, v]) => `${k} ${v.toFixed(1)}°C`).join(", ");
+    $("res").innerHTML = `<div class="stats">` + stat("메모리 최대 MB", `${rs.ram_max_mb} / ${rs.ram_total_mb}`) +
+      stat("CPU 평균 %", fmt(rs.cpu_mean_pct, 0)) + stat("GPU 평균 %", fmt(rs.gpu_mean_pct, 0)) +
+      stat("GPU 최대 %", rs.gpu_max_pct ?? "-") + `</div><p style="font-size:12px;color:var(--dim)">최고 온도: ${temps || "-"} (${rs.samples}초 기록)</p>`;
+  }
   $("status").textContent = `갱신 ${new Date().toLocaleTimeString()}`;
 }
 

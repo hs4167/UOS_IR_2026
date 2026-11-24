@@ -22,6 +22,7 @@ from floor_dirt.dirt_map import load_regions
 from floor_dirt.floor_grid import FloorGrid, lidar_free_mask
 from floor_dirt.pipeline import PATROL_STAGES, REFERENCE_STAGES, Patroller, ReferenceBuilder
 from floor_dirt.projection import GridMeta, undistort_maps
+from floor_dirt.tegralog import TegrastatsLogger
 from floor_dirt.timing import StageTimer
 from floor_dirt.viz import lidar_background
 
@@ -74,16 +75,22 @@ def run_reference(run_dir, map_yaml, out_dir, params, H, maps=None, merge=False,
             raise ValueError("기존 기준의 격자가 지도와 다릅니다. --merge 없이 새로 만드세요")
         rb.floor_grid.merge(old)
     ds = FrameDataset(run_dir)
+    tlog = TegrastatsLogger(os.path.join(results_dir, "tegrastats.log")).start()   # 젯슨에서만 기록됨
     t0 = time.monotonic()
-    for i, f in enumerate(ds, 1):
-        rb.process(f)
-        if not quiet:
-            _progress(i, len(ds), t0, prefix="[reference] ")
+    try:
+        for i, f in enumerate(ds, 1):
+            rb.process(f)
+            if not quiet:
+                _progress(i, len(ds), t0, prefix="[reference] ")
+    finally:
+        resources = tlog.stop()
     floor = lidar_free_mask(map_yaml, grid)
     cov = rb.save(out_dir, run=run, floor_mask=floor)
     rb.close()
     _write_info(results_dir, {"kind": "reference", "run": run_dir, "map": map_yaml, "out": out_dir,
-                              "frames": len(ds), "merge": bool(merge), "coverage": cov, "params": params})
+                              "frames": len(ds), "merge": bool(merge), "coverage": cov, "resources": resources,
+                              "params": params})
+    cov = dict(cov, resources=resources)
     return cov
 
 
@@ -105,17 +112,21 @@ def run_patrol(run_dir, reference_dir, out_dir, params, H, maps=None, map_yaml=N
     interval = float(params["viz"]["update_interval_s"] if update_interval is None else update_interval)
     last = time.monotonic()
     t0 = last
-    for i, f in enumerate(ds, 1):
-        pt.process(f)
-        if not quiet:
-            _progress(i, len(ds), t0, prefix="[patrol] ")
-        if interval > 0 and time.monotonic() - last >= interval:
-            pt.export(out_dir, run=run, background=background)   # 중간 저장 (사진 없이 빠르게)
-            last = time.monotonic()
+    tlog = TegrastatsLogger(os.path.join(out_dir, "tegrastats.log")).start()   # 젯슨에서만 기록됨
+    try:
+        for i, f in enumerate(ds, 1):
+            pt.process(f)
+            if not quiet:
+                _progress(i, len(ds), t0, prefix="[patrol] ")
+            if interval > 0 and time.monotonic() - last >= interval:
+                pt.export(out_dir, run=run, background=background)   # 중간 저장 (사진 없이 빠르게)
+                last = time.monotonic()
+    finally:
+        resources = tlog.stop()
     regions = pt.export(out_dir, run=run, background=background, get_frame=ds.__getitem__)
     pt.close()
     _write_info(out_dir, {"kind": "patrol", "run": run_dir, "reference": reference_dir, "map": map_yaml,
-                          "frames": len(ds), "regions": len(regions), "params": params})
+                          "frames": len(ds), "regions": len(regions), "resources": resources, "params": params})
     return regions
 
 

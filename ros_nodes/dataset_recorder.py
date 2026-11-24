@@ -26,6 +26,7 @@ from floor_dirt.dataset import Frame, FrameDatasetWriter  # noqa: E402
 from floor_dirt.masks import scan_to_points  # noqa: E402
 from floor_dirt.monitor import image_msg_to_bgr  # noqa: E402
 from floor_dirt.recording import PendingFrames, RateGate, ScanBuffer, quat_to_yaw, transform_to_pose  # noqa: E402
+from floor_dirt.tegralog import TegrastatsLogger, format_summary  # noqa: E402
 
 
 def stamp_sec(stamp):
@@ -65,6 +66,7 @@ def main():
         "source": "dataset_recorder",
     }
     writer = FrameDatasetWriter(args.out, meta)
+    tlog = TegrastatsLogger(os.path.join(args.out, "tegrastats.log")).start()
 
     rclpy.init()
     node = rclpy.create_node("dataset_recorder")
@@ -142,6 +144,7 @@ def main():
         pass
     finally:
         writer.close()
+        print("[record] " + format_summary(tlog.stop()), flush=True)
         print("[record] 종료: {}장 저장 → {} (위치 못 붙여 버림 {}, 스캔 없음 {})".format(
             st["saved"], args.out, pending.dropped, st["no_scan"]), flush=True)
         if st["saved"] == 0:

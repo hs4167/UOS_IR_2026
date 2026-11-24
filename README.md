@@ -59,7 +59,11 @@ UOS_IR_2026/
 │   ├── synthetic.py        합성 카메라·강의실 장면 (테스트와 WSL 확인용)
 │   ├── monitor.py          실시간 모니터 화면 합성: 카메라(+ROI·LiDAR 바닥 위치), LiDAR 위에서 본 그림, 상태 줄
 │   ├── mjpeg_server.py     브라우저용 실시간 영상 서버 (MJPEG over HTTP, 표준 라이브러리만)
-│   └── jetson.py           jetson-inference/utils 불러오기 (conda에서 시스템 경로 보완)
+│   ├── jetson.py           jetson-inference/utils 불러오기 (conda에서 시스템 경로 보완)
+│   ├── camera_settings.py  웹캠 설정: v4l2-ctl 컨트롤 읽기, 자동 끄기→값 순서로 적용 계획
+│   ├── recording.py        녹화 로직: 저장 주기, 사진·스캔 시각 짝짓기, TF 대기열
+│   ├── occupancy.py        LiDAR 지도: OccupancyGrid → pgm/yaml 저장, 지도 뷰어 그림
+│   └── tegralog.py         젯슨 자원 기록: 녹화·처리 중 tegrastats.log 저장, 메모리·CPU·GPU·온도 요약
 │                           (예정) 재방문 (revisit.py)
 ├── launch/                 ROS 2 launch 파일
 │   ├── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
@@ -104,6 +108,7 @@ UOS_IR_2026/
 │   ├── test_e2e.py         합성 강의실 E2E: 기준 주행 → 정찰 → 오염 3개 검출·오탐 0·위치 오차 2 cm 이내
 │   ├── test_offline.py     오프라인 실행 테스트 (평가 짝짓기, 결과 웹, 스크립트 전체 흐름)
 │   ├── test_recording.py   녹화 준비 테스트 (C920 컨트롤 해석·적용 순서, 주기·짝짓기·대기열, 노드 문법)
+│   ├── test_tegralog.py    자원 기록 테스트 (젯슨 실제 출력 해석, 요약, 가짜 tegrastats, 웹 표시)
 │   ├── test_mapping.py     지도 테스트 (저장한 SLAM 지도 방향, 뷰어 그림, AMCL 설정)
 │   └── test_monitor.py     모니터 테스트 (LiDAR 그림 방향, 카메라 위 LiDAR 점, 상태 줄, 메시지 변환, 재생 실행, 브라우저 스트림)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
@@ -111,6 +116,8 @@ UOS_IR_2026/
 ├── pytest.ini              테스트 설정 (tests/ 폴더 지정, floor_dirt import 경로)
 └── requirements-dev.txt    개발 PC(WSL) 전용 패키지 목록. 젯슨에서는 사용 금지
 ```
+
+녹화(`data/<run>/`)와 오프라인 처리(`results/<run>/`) 폴더에는 젯슨 자원 기록 `tegrastats.log`가 자동으로 생깁니다 (WSL에서는 생기지 않음).
 
 `.gitkeep`은 빈 폴더를 git에 남기기 위한 빈 파일입니다. `data/`(주행 녹화·이미지)와 `results/`(실행 결과)는 용량이 커서 git에 올리지 않으며, 실행하면 로컬에 생깁니다.
 
