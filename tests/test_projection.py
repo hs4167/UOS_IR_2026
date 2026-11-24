@@ -10,7 +10,7 @@ from floor_dirt.projection import (
     robot_to_pixel, undistort_maps, undistort, undistort_points, warp_mask, warp_to_grid,
     window_slices, grid_matrix, apply_homography,
 )
-from synthetic import FloorTexture, c920_like, render, wide_camera
+from floor_dirt.synthetic import FloorTexture, c920_like, render, wide_camera
 
 ROI = load_params()["roi"]
 GRID = GridMeta(resolution=0.01, origin_x=0.0, origin_y=0.0, width=400, height=400)

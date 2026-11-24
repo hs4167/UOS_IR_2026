@@ -8,7 +8,7 @@ from floor_dirt.config import load_params
 from floor_dirt.dirt_map import CLEAN, SUSPECT, UNKNOWN, DirtMap, export_regions, load_regions, logit
 from floor_dirt.floor_grid import FloorGrid
 from floor_dirt.projection import GridMeta, map_to_cell, warp_to_grid
-from synthetic import FloorTexture, render, wide_camera
+from floor_dirt.synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
 SS = PARAMS["grid"]["supersample"]

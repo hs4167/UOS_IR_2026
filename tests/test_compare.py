@@ -5,7 +5,7 @@ from floor_dirt.compare import compare_warp, compare_window, reference_window
 from floor_dirt.config import load_params
 from floor_dirt.floor_grid import FloorGrid, Reference, to_lab
 from floor_dirt.projection import GridMeta, map_to_cell, warp_to_grid, window_slices
-from synthetic import FloorTexture, render, wide_camera
+from floor_dirt.synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
 SS = PARAMS["grid"]["supersample"]

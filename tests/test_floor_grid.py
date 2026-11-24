@@ -7,7 +7,7 @@ import pytest
 from floor_dirt.config import load_params
 from floor_dirt.floor_grid import FloorGrid, lidar_free_mask, to_lab
 from floor_dirt.projection import GridMeta, cell_to_map, map_to_cell, warp_to_grid
-from synthetic import FloorTexture, render, wide_camera
+from floor_dirt.synthetic import FloorTexture, render, wide_camera
 
 GRID = GridMeta(resolution=0.01, origin_x=0.0, origin_y=0.0, width=60, height=40)
 ROI = load_params()["roi"]

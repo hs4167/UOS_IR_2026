@@ -10,7 +10,7 @@ from floor_dirt.calibration import (
 )
 from floor_dirt.config import load_params
 from floor_dirt.projection import apply_homography, pixel_to_robot, roi_polygon
-from synthetic import board_view, c920_like, distort_image, floor_board_texture, render
+from floor_dirt.synthetic import board_view, c920_like, distort_image, floor_board_texture, render
 
 PATTERN = (9, 6)
 SQUARE = 0.025

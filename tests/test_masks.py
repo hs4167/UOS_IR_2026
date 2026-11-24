@@ -16,7 +16,7 @@ from floor_dirt.masks import (
 from floor_dirt.projection import (
     GridMeta, cell_to_map, map_to_cell, map_to_robot, robot_to_map, robot_to_pixel, warp_to_grid,
 )
-from synthetic import FloorTexture, render, wide_camera
+from floor_dirt.synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
 SS = PARAMS["grid"]["supersample"]

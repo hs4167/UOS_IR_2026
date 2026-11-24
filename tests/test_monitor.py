@@ -13,7 +13,7 @@ from floor_dirt.monitor import (
     lidar_on_camera, lidar_topdown, quaternion_to_yaw, status_lines,
 )
 from floor_dirt.projection import robot_to_pixel
-from synthetic import FloorTexture, c920_like, render
+from floor_dirt.synthetic import FloorTexture, c920_like, render
 
 ROI = load_params()["roi"]
 

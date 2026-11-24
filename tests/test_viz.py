@@ -14,7 +14,7 @@ from floor_dirt.viz import (
     COL_CLEAN, COL_HATCH, COL_OCC, COL_REGION, debug_overlay, lidar_background, region_crop, render_dirt_map,
     save_png_atomic, window_to_image,
 )
-from synthetic import FloorTexture, render, wide_camera
+from floor_dirt.synthetic import FloorTexture, render, wide_camera
 
 PARAMS = load_params()
 GRID = GridMeta(0.01, 0.0, 0.0, 200, 100)  # 2 m x 1 m

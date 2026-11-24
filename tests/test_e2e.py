@@ -22,7 +22,7 @@ from floor_dirt.masks import ImageExcluder
 from floor_dirt.pipeline import PATROL_STAGES, Patroller, ReferenceBuilder
 from floor_dirt.projection import GridMeta, map_to_robot
 from floor_dirt.timing import StageTimer
-from synthetic import (
+from floor_dirt.synthetic import (
     ColorBlobDetector, add_sensor_noise, classroom_scene, item_outline, noisy, render, wide_camera,
 )
 
