@@ -12,20 +12,10 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ "${CONDA_DEFAULT_ENV:-}" != "test1001" ]]; then
-    echo "[monitor.sh] 경고: conda 환경이 test1001이 아닙니다 (현재: ${CONDA_DEFAULT_ENV:-없음})." \
-         "'conda activate test1001' 후 실행하세요"
-fi
-
-if [[ -f /opt/ros/foxy/setup.bash ]]; then
-    # shellcheck disable=SC1091
-    source /opt/ros/foxy/setup.bash
-    export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"
-    export TURTLEBOT3_MODEL="${TURTLEBOT3_MODEL:-waffle_pi}"
-    export LDS_MODEL="${LDS_MODEL:-LDS-01}"
-    echo "[monitor.sh] ROS_DISTRO=$ROS_DISTRO ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
-else
-    echo "[monitor.sh] /opt/ros/foxy 없음: ROS 없이 실행합니다 (--no-ros 또는 --dataset 필요)"
+# shellcheck source=ros_conda_env.sh
+source "$SCRIPT_DIR/ros_conda_env.sh"
+if [[ $ROS_ENV_OK -eq 0 ]]; then
+    echo "[monitor.sh] ROS 없이 실행합니다 (--no-ros 또는 --dataset 필요)"
 fi
 
 exec python "$SCRIPT_DIR/live_monitor.py" "$@"

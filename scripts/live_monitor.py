@@ -295,6 +295,7 @@ def main():
 
     cam_rate = RateMeter()
     replay_scan_rate = RateMeter()
+    topic_ctrl, topic_ctrl_t = None, 0.0
     period = 1.0 / args.fps
     last_send = 0.0
     last_print = time.monotonic()  # 첫 출력은 주기가 잡힌 2초 뒤
@@ -327,6 +328,15 @@ def main():
                     if args.topic:
                         frame = img
                         cam_rate = ros.image_rate
+                        # 카메라 노드가 웹캠을 쓰는 중이어도 설정 값은 v4l2-ctl로 읽을 수 있다 (2초마다)
+                        if time.monotonic() - topic_ctrl_t > 2.0:
+                            topic_ctrl_t = time.monotonic()
+                            try:
+                                from floor_dirt.camera_settings import describe, read_controls
+                                topic_ctrl = describe(read_controls(args.camera))
+                            except (OSError, RuntimeError):
+                                topic_ctrl = None
+                        ctrl = topic_ctrl
             now = time.monotonic()
             if replay is None and now - last_send < period:
                 continue

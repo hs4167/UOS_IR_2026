@@ -1,0 +1,22 @@
+# 바닥 카메라(Logitech C920) 고정 설정. scripts/camera_settings.py와 ros_nodes/camera_node.py가 적용한다.
+# 기준·정찰 주행은 반드시 같은 값으로 찍는다 (값을 바꾸면 기준 주행부터 다시).
+# 값 고르는 법: 실시간 모니터를 보면서 scripts/camera_settings.py --exposure N --focus N 으로 바꿔 보고,
+#              바닥이 너무 어둡거나 밝지 않고 타일 이음새가 선명한 값으로 정한 뒤 --save.
+
+device: /dev/video0
+width: 640
+height: 480
+fourcc: YUYV            # 640x480은 무압축으로 30 fps 가능
+fps: 30
+
+controls:               # 이름은 v4l2-ctl --list-ctrls 기준 (젯슨 2026-11-24 확인)
+  exposure_auto: 1                    # 1 = 수동 노출 (3 = 자동)
+  exposure_auto_priority: 0           # 0 = 프레임 속도 고정 (1이면 어두울 때 fps가 떨어짐)
+  exposure_absolute: 250              # 3~2047 (100 µs 단위). 강의실 조명에서 조정
+  gain: 0                             # 0~255. 노이즈가 늘어나므로 되도록 0
+  white_balance_temperature_auto: 0   # 0 = 화이트밸런스 고정
+  white_balance_temperature: 4000     # 2000~6500 K. 형광등이면 4000 근처
+  focus_auto: 0                       # 0 = 자동 초점 끔 (초점이 움직이면 바닥 투영 H가 틀어짐)
+  focus_absolute: 0                   # 0~250 (5 단위). 0 = 먼 곳. 바닥(30~60 cm)이 선명한 값으로 조정
+  backlight_compensation: 0
+  power_line_frequency: 2             # 2 = 60 Hz (한국 형광등 깜빡임 방지)

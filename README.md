@@ -36,8 +36,8 @@ GitHub 첫 화면에 보이는 순서대로 정리했습니다. *(예정)* 표�
 UOS_IR_2026/
 ├── config/                 설정 파일
 │   └── params.yaml         모든 처리 파라미터 (ROI, 격자 해상도, 비교 임계값, 확률, 재방문, 디버그 출력)
+│   ├── camera_settings.yaml  웹캠 노출·초점·화이트밸런스 고정값 (기준·정찰 공통)
 │                           (보정 후 생성) camera_intrinsics.yaml, floor_homography.yaml
-│                           (예정) camera_settings.yaml
 ├── docs/                   문서
 │   └── 실험_기록.md        시도·결과·실패 원인 기록 (보고서 자료)
 ├── floor_dirt/             처리 로직 패키지 (순수 Python, ROS 의존 없음)
@@ -53,29 +53,37 @@ UOS_IR_2026/
 │   ├── viz.py              시각화: 결과 지도 dirt_map.png (LiDAR 지도 위 확률·구역·로봇), 구역 사진, 카메라 디버그 오버레이
 │   ├── debug_stream.py     디버그 영상 출력: 없음 / 파일 / 브라우저(HTTP) / RTSP(젯슨)
 │   ├── pipeline.py         처리 묶음: 기준 주행(ReferenceBuilder)·정찰 주행(Patroller). 오프라인·ROS 공용
+│   ├── offline.py          오프라인 실행: 데이터셋 → 기준 지도 / 정찰 결과, 정답 비교 평가
+│   ├── web.py              결과 웹 서버 (주행 선택, 오염 지도, 구역 표·사진, 평가, 처리 시간)
+│   ├── synthetic.py        합성 카메라·강의실 장면 (테스트와 WSL 확인용)
 │   ├── monitor.py          실시간 모니터 화면 합성: 카메라(+ROI·LiDAR 바닥 위치), LiDAR 위에서 본 그림, 상태 줄
 │   ├── mjpeg_server.py     브라우저용 실시간 영상 서버 (MJPEG over HTTP, 표준 라이브러리만)
 │   └── jetson.py           jetson-inference/utils 불러오기 (conda에서 시스템 경로 보완)
-│                           (예정) 재방문
+│                           (예정) 재방문 (revisit.py)
 ├── launch/                 ROS 2 launch 파일
 │   └── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
 ├── maps/                   지도
 │   └── reference/          기준 바닥 지도 저장 위치 (reference.npz + reference.yaml, 기준 주행 후 생성)
 │                           (예정) classroom.pgm / classroom.yaml (LiDAR SLAM 지도)
-├── ros_nodes/              (예정) ROS 2 노드 (토픽 구독·발행만 하고 처리는 floor_dirt 호출)
+├── ros_nodes/              ROS 2 노드 (토픽 구독·발행만 하고 처리는 floor_dirt 호출)
+│   ├── camera_node.py      웹캠 → /image_raw (시작 시 고정 설정 적용)
+│   └── dataset_recorder.py 주행 녹화: 사진 + 찍은 순간의 위치(TF) + LiDAR → data/<run>/
 ├── scripts/                실행 스크립트
 │   ├── robot.sh            환경 설정 + TurtleBot3 bringup (LDS-02 기본, source 하면 환경 설정만)
 │   ├── teleop.sh           키보드 주행
 │   ├── odom_monitor.sh     오도메트리 확인 (수신 주기, 위치, 속도, 이동 거리)
 │   ├── monitor.sh          실시간 모니터 실행 (conda 유지 + ROS 환경 설정 → live_monitor.py)
+│   ├── ros_conda_env.sh    우리 ROS 노드용 환경 설정 (monitor·camera·record가 공유)
+│   ├── camera.sh           카메라 노드 실행
+│   ├── record.sh           주행 녹화 실행 (data/<run 이름>/)
+│   ├── camera_settings.py  웹캠 노출·초점 고정 적용·조정·저장
 │   ├── live_monitor.py     카메라 + LiDAR + odom을 한 화면으로 송출 (노트북 브라우저로 확인)
 │   ├── capture_images.py   웹캠으로 보정용 사진 촬영 (화면 없이 자동/Enter 촬영)
 │   ├── calibrate_intrinsics.py  체커보드 사진들 → camera_intrinsics.yaml
 │   ├── calibrate_floor.py  바닥 보드 사진 + 실측 좌표 → floor_homography.yaml
 │   └── check_floor_projection.py  다른 위치 실측점으로 투영 오차 검사 (통과/실패)
-│                           (예정) 카메라 설정 고정, rosbag 추출, 오프라인 처리, 평가, 결과 웹 서버
+│                           (예정) SLAM 지도 작성, 위치 추정(AMCL)
 ├── tests/                  floor_dirt 단위 테스트
-│   ├── synthetic.py        테스트용 합성 카메라 (가상 바닥·체커보드를 정해진 자세에서 찍은 이미지 생성)
 │   ├── test_foundation.py  config·timing·dataset 테스트
 │   ├── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
 │   ├── test_calibration.py 보정 테스트 (K·D 복원, 보드 방향 정렬, H 정확도, 잘못 잰 원점 검출)
@@ -85,6 +93,8 @@ UOS_IR_2026/
 │   ├── test_dirt_map.py    오염 확률 테스트 (누적·클램프, 상태, 구역 크기·중심, 저장, 합성 정찰 구역 1개)
 │   ├── test_viz.py         시각화 테스트 (색·방향·빗금·구역 표시, LiDAR 배경, 오버레이, 구역 사진, 디버그 출력)
 │   ├── test_e2e.py         합성 강의실 E2E: 기준 주행 → 정찰 → 오염 3개 검출·오탐 0·위치 오차 2 cm 이내
+│   ├── test_offline.py     오프라인 실행 테스트 (평가 짝짓기, 결과 웹, 스크립트 전체 흐름)
+│   ├── test_recording.py   녹화 준비 테스트 (C920 컨트롤 해석·적용 순서, 주기·짝짓기·대기열, 노드 문법)
 │   └── test_monitor.py     모니터 테스트 (LiDAR 그림 방향, 카메라 위 LiDAR 점, 상태 줄, 메시지 변환, 재생 실행, 브라우저 스트림)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
@@ -164,6 +174,50 @@ http://<젯슨IP>:8080
 .venv/bin/python scripts/live_monitor.py --dataset data/<run> --loop
 ```
 
+### 주행 녹화 (젯슨)
+
+**카메라 설정 고정 (처음 한 번, 값은 모니터 보며 조정):**
+
+```bash
+conda activate test1001
+python scripts/camera_settings.py --exposure 250 --focus 30
+python scripts/camera_settings.py --exposure 250 --focus 30 --save
+```
+
+**터미널 1 (bringup, conda 끔):**
+
+```bash
+./scripts/robot.sh
+```
+
+**터미널 2 (카메라 노드):**
+
+```bash
+conda activate test1001
+./scripts/camera.sh
+```
+
+**터미널 3 (모니터, 선택):**
+
+```bash
+conda activate test1001
+./scripts/monitor.sh --topic /image_raw
+```
+
+**터미널 4 (녹화, 끝나면 Ctrl+C):**
+
+```bash
+conda activate test1001
+./scripts/record.sh test_odom --frame odom                     # 지도 없이 시험
+./scripts/record.sh 2026-11-25_ref --note "형광등 전부"          # 지도 + 위치 추정 켠 상태
+```
+
+**터미널 5 (키보드 주행, conda 끔):**
+
+```bash
+./scripts/teleop.sh
+```
+
 ### 카메라 보정 (젯슨, conda `test1001`)
 
 체커보드 칸 크기를 자로 재서 `config/params.yaml`의 `calibration.square`에 넣은 뒤 진행합니다.
@@ -177,6 +231,42 @@ python scripts/capture_images.py --out data/calib_floor --manual --count 2
 python scripts/calibrate_floor.py --image data/calib_floor/000.png --origin 0.250 -0.090
 # 3) 검사: 보드를 다른 위치로 옮겨 찍은 사진으로 오차 평균 1 cm 이하인지 확인
 python scripts/check_floor_projection.py --board data/calib_floor/001.png --origin 0.380 0.020
+```
+
+### 오프라인 처리 · 결과 웹
+
+**기준 주행 → 기준 바닥 지도:**
+
+```bash
+python scripts/run_reference.py --run data/<기준 run> --map maps/classroom.yaml
+```
+
+**정찰 주행 → 오염 구역:**
+
+```bash
+python scripts/run_patrol.py --run data/<정찰 run> --map maps/classroom.yaml
+```
+
+**정답과 비교:**
+
+```bash
+python scripts/evaluate.py --results results/<정찰 run> --truth data/<정찰 run>/truth.json
+```
+
+**결과 웹 (브라우저 http://<주소>:8000):**
+
+```bash
+python scripts/serve_results.py
+```
+
+**개발 PC (WSL, 합성 데이터로 전체 흐름):**
+
+```bash
+.venv/bin/python scripts/make_synthetic_run.py
+.venv/bin/python scripts/run_reference.py --run data/synthetic_ref --map data/synthetic_map/classroom.yaml --calib-dir data/synthetic_calib --no-dnn --out data/synthetic_reference
+.venv/bin/python scripts/serve_results.py &
+.venv/bin/python scripts/run_patrol.py --run data/synthetic_patrol --map data/synthetic_map/classroom.yaml --reference data/synthetic_reference --calib-dir data/synthetic_calib --no-dnn --synthetic-detector
+.venv/bin/python scripts/evaluate.py --results results/synthetic_patrol --truth data/synthetic_patrol/truth.json
 ```
 
 ### 개발환경 테스트
@@ -203,9 +293,9 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | 기반 | 파라미터, 처리 시간 측정, 프레임 데이터셋 | ✅ |
 | 주행 | bringup, 키보드 주행, 오도메트리 확인 (젯슨) | ✅ |
 | [0] | 카메라 보정, 바닥 투영 | 🟨 코드 완료 (WSL 합성 검증), 실기 보정 전 |
-| [1] | LiDAR 연결, SLAM 지도 작성 | ⬜ |
-| [2] | 기준 바닥 지도 | 🟨 격자 누적·저장 완료 (WSL), 실행 스크립트는 단위 11 |
-| [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 처리·시각화·합성 E2E 통과 (WSL), 실행 스크립트·웹 남음 |
+| [1] | LiDAR 연결, SLAM 지도 작성 | 🟨 LiDAR(LDS-02) 연결·실시간 모니터 완료, SLAM 남음 |
+| [2] | 기준 바닥 지도 | 🟨 처리·실행 스크립트 완료 (WSL 합성 검증), 실제 주행 녹화 남음 |
+| [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 처리·실행·평가·결과 웹 완료 (WSL 합성: 3/3 검출, 오탐 0), 실제 주행 남음 |
 | [4] | 재방문, 처리 여부 검증 | ⬜ |
 
 ## References
