@@ -59,14 +59,21 @@ def to_gray(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
 
 
-def find_chessboard(img, pattern):
-    # type: (np.ndarray, Pattern) -> Optional[np.ndarray]
-    """내부 코너를 찾아 서브픽셀로 다듬는다. (N, 2), N = cols * rows. 못 찾으면 None."""
+def find_chessboard(img, pattern, fast=False):
+    # type: (np.ndarray, Pattern, bool) -> Optional[np.ndarray]
+    """내부 코너를 찾아 서브픽셀로 다듬는다. (N, 2), N = cols * rows. 못 찾으면 None.
+
+    fast=True: 미리보기용. 보드가 없으면 빨리 포기하고(FAST_CHECK) 서브픽셀 다듬기를 생략한다.
+    """
     gray = to_gray(img)
     flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+    if fast:
+        flags |= cv2.CALIB_CB_FAST_CHECK
     found, corners = cv2.findChessboardCorners(gray, tuple(pattern), flags=flags)
     if not found:
         return None
+    if fast:
+        return corners.reshape(-1, 2).astype(np.float64)
     corners = cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1), _SUBPIX_CRITERIA)
     return corners.reshape(-1, 2).astype(np.float64)
 
@@ -146,6 +153,37 @@ def load_intrinsics(path=DEFAULT_INTRINSICS_PATH):
         d = yaml.safe_load(f)
     return Intrinsics(K=np.array(d["K"], dtype=np.float64), D=np.array(d["D"], dtype=np.float64),
                       width=int(d["width"]), height=int(d["height"]), rms=float(d.get("rms_px", float("nan"))))
+
+
+def capture_preview(frame, corners, pattern, saved, total, coverage=None, message=""):
+    # type: (np.ndarray, Optional[np.ndarray], Optional[Pattern], int, int, Optional[np.ndarray], str) -> np.ndarray
+    """보정 촬영 미리보기: 검출된 코너, 저장 장수, 화면 3x3 구역별 저장된 코너 수 (0인 구역은 빨갛게).
+
+    내부 보정은 화면 구석까지 코너가 찍혀야 렌즈 왜곡이 정확하다 (docs/실험_기록.md 2026-11-19).
+    """
+    img = frame.copy() if frame.ndim == 3 else cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    h, w = img.shape[:2]
+    if coverage is not None:
+        ny, nx = coverage.shape
+        for r in range(ny):
+            for c in range(nx):
+                x0, y0, x1, y1 = c * w // nx, r * h // ny, (c + 1) * w // nx, (r + 1) * h // ny
+                if coverage[r, c] == 0:
+                    roi = img[y0:y1, x0:x1]
+                    roi[:] = (0.75 * roi + 0.25 * np.array((0, 0, 255))).astype(np.uint8)
+                cv2.rectangle(img, (x0, y0), (x1 - 1, y1 - 1), (90, 90, 90), 1)
+                cv2.putText(img, str(int(coverage[r, c])), (x0 + 6, y0 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                            (0, 0, 255) if coverage[r, c] == 0 else (0, 200, 0), 2, cv2.LINE_AA)
+    if corners is not None and pattern is not None:
+        cv2.drawChessboardCorners(img, tuple(pattern), corners.reshape(-1, 1, 2).astype(np.float32), True)
+    status = "board OK" if corners is not None else ("no board" if pattern is not None else "")
+    lines = ["saved {}/{}".format(saved, total), status, message]
+    for i, t in enumerate(l for l in lines if l):
+        y = h - 12 - 24 * i
+        cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
+                    (0, 220, 0) if t == "board OK" else (255, 255, 255), 2, cv2.LINE_AA)
+    return img
 
 
 # ---------------------------------------------------------------- 바닥 호모그래피

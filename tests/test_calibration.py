@@ -1,5 +1,6 @@
 import math
 
+import cv2
 import numpy as np
 import pytest
 
@@ -195,3 +196,22 @@ def test_floor_calibration_yaml_roundtrip(tmp_path):
 def test_in_roi():
     pts = np.array([[0.3, 0.0], [0.1, 0.0], [0.5, 0.3]])
     assert in_roi(pts, ROI).tolist() == [True, False, False]
+
+
+def test_fast_detection_and_capture_preview():
+    from floor_dirt.calibration import capture_preview, corner_coverage
+    cam = c920_like()
+    img = cv2.cvtColor(board_view(cam.K, None, (cam.width, cam.height), np.radians([10, -5, 0]),
+                                  np.array([-0.15, -0.08, 0.45]), PATTERN, SQUARE), cv2.COLOR_GRAY2BGR)
+    fast = find_chessboard(img, PATTERN, fast=True)
+    full = find_chessboard(img, PATTERN)
+    assert fast is not None and np.abs(fast - full).max() < 1.5          # 미리보기용도 위치는 거의 같음
+    assert find_chessboard(np.full_like(img, 128), PATTERN, fast=True) is None
+    cov = corner_coverage([full], (cam.width, cam.height))
+    out = capture_preview(img, fast, PATTERN, 3, 20, cov, "saved 002.png")
+    assert out.shape == img.shape and not np.array_equal(out, img)
+    empty = [(r, c) for r in range(3) for c in range(3) if cov[r, c] == 0]
+    assert empty                                                         # 한 장으로는 빈 구역이 남음
+    r, c = empty[0]
+    cell = out[r * 160 + 40:r * 160 + 120, c * 213 + 40:c * 213 + 170].astype(int)
+    assert (cell[..., 2] - cell[..., 0]).mean() > 20                     # 빈 구역은 빨갛게

@@ -94,6 +94,7 @@ UOS_IR_2026/
 │   ├── nav.sh              Nav2 실행 (지도 + 위치 추정 + 경로 주행, RViz 없음, 시작 위치 자동 알림)
 │   ├── revisit.sh          재방문 노드 실행
 │   ├── live_monitor.py     카메라 + LiDAR + odom을 한 화면으로 송출 (노트북 브라우저로 확인)
+│   ├── make_checkerboard.py  보정용 체커보드 인쇄 파일 (A4 SVG, 칸 크기 mm 지정)
 │   ├── capture_images.py   웹캠으로 보정용 사진 촬영 (화면 없이 자동/Enter 촬영)
 │   ├── calibrate_intrinsics.py  체커보드 사진들 → camera_intrinsics.yaml
 │   ├── calibrate_floor.py  바닥 보드 사진 + 실측 좌표 → floor_homography.yaml
@@ -291,7 +292,11 @@ python scripts/plan_revisit.py --results results/<정찰 run> --map maps/classro
 체커보드 칸 크기를 자로 재서 `config/params.yaml`의 `calibration.square`에 넣은 뒤 진행합니다.
 
 ```bash
-# 1) 내부 보정: 보드를 화면 구석구석·여러 각도로 움직이며 20장
+python scripts/make_checkerboard.py      # results/checkerboard_9x6_20mm.svg → A4 '실제 크기(100%)'로 인쇄
+```
+
+```bash
+# 1) 내부 보정: 모니터는 끄고, 미리보기 http://<젯슨IP>:8080 을 보며 빨간 구역(코너 0)이 없게 20장
 python scripts/capture_images.py --out data/calib_intrinsics --count 20 --pattern 9x6
 python scripts/calibrate_intrinsics.py --images "data/calib_intrinsics/*.png"
 # 2) 바닥 보정: 보드를 로봇 앞 바닥에 놓고 기준 코너(가장 가깝고 오른쪽) 좌표를 줄자로 잼
