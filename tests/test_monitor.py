@@ -198,40 +198,16 @@ def test_debug_output_http_mode():
 # ---------------------------------------------------------------- 전원 표시
 
 def test_battery_percent_and_power_line():
-    from floor_dirt.jetson_power import Rail
     from floor_dirt.monitor import battery_percent, power_line
     assert battery_percent(12.3) == 100.0 and battery_percent(10.5) == 0.0
     assert battery_percent(11.4) == pytest.approx(50.0) and battery_percent(13.0) == 100.0
-    line = power_line({"voltage": 12.05, "percentage": 86.0}, Rail("VDD_IN", 19.05, 8.2))
-    assert line == "OpenCR bat 12.05 V (86%) | Jetson VDD_IN 19.05 V 8.2 W"
-    assert "LOW" in power_line({"voltage": 11.05, "percentage": None}, None)
-    assert "CHARGE NOW" in power_line({"voltage": 10.9, "percentage": None}, None)
-    assert power_line(None, None) == "OpenCR bat -- | Jetson in n/a"
-    assert power_line(None, None, show_jetson=False) == "OpenCR bat --"
+    assert power_line({"voltage": 12.05, "percentage": 86.0}) == "OpenCR bat 12.05 V (86%)"
+    assert "LOW" in power_line({"voltage": 11.05, "percentage": None})
+    assert "CHARGE NOW" in power_line({"voltage": 10.9, "percentage": None})
+    assert power_line(None) == "OpenCR bat --"
     lines = status_lines(power="OpenCR bat 12.00 V", cam_ctrl={"AE": "AUTO"})
     assert lines[2] == "OpenCR bat 12.00 V" and lines[3].startswith("AE")
 
-
-def test_jetson_power_reads_ina3221(tmp_path):
-    from floor_dirt.jetson_power import input_rail, read_rails
-    assert read_rails(str(tmp_path)) == []                     # 센서 없는 보드
-    other = tmp_path / "hwmon0"
-    other.mkdir()
-    (other / "name").write_text("cpu_thermal\n")
-    dev = tmp_path / "hwmon3"
-    dev.mkdir()
-    (dev / "name").write_text("ina3221\n")
-    for n, (label, mv, ma) in enumerate([("VDD_IN", 19040, 450), ("VDD_CPU_GPU_CV", 19040, 120), ("NC", 0, 0)], 1):
-        (dev / "in{}_label".format(n)).write_text(label + "\n")
-        (dev / "in{}_input".format(n)).write_text(str(mv) + "\n")
-        (dev / "curr{}_input".format(n)).write_text(str(ma) + "\n")
-    rails = read_rails(str(tmp_path))
-    assert [r.label for r in rails] == ["VDD_IN", "VDD_CPU_GPU_CV"]    # NC(연결 안 됨)는 제외
-    r = input_rail(rails)
-    assert r.label == "VDD_IN" and r.volts == pytest.approx(19.04) and r.watts == pytest.approx(19.04 * 0.45)
-
-
-# ---------------------------------------------------------------- 계기판
 
 def test_level_colors():
     from floor_dirt.monitor import C_BAD, C_OFF, C_OK, C_WARN, level
@@ -245,11 +221,10 @@ def _near(img, v, u, col, tol=30):
 
 
 def test_dashboard_lights_and_bars():
-    from floor_dirt.jetson_power import Rail
     from floor_dirt.monitor import C_BAD, C_OFF, C_OK, C_WARN, DASH_H, compose_dashboard, dashboard
     good = dict(cam_on=True, cam_fps=30.0, ros_on=True, scan_hz=5.0, scan_age=0.1, n_points=300,
                 closest=(1.5, 0.0), odom={"x": 0, "y": 0, "yaw": 0, "v": 0.2, "w": 0.0}, odom_age=0.05,
-                battery={"voltage": 12.1, "percentage": 89}, jetson=Rail("VDD_IN", 19.0, 8.0),
+                battery={"voltage": 12.1, "percentage": 89},
                 cam_ctrl={"AE": "MANUAL", "AF": "OFF", "AWB": "OFF"}, calibrated=True)
     img = dashboard(1120, good)
     assert img.shape == (DASH_H, 1120, 3)
@@ -285,60 +260,3 @@ def test_dashboard_speed_bar_direction():
     blue = lambda row: np.nonzero((row[:, 0] > 180) & (row[:, 2] < 100))[0] + x0
     assert blue(row_f).min() >= cx - 1 and blue(row_f).max() > cx + 50     # 전진 = 오른쪽으로
     assert blue(row_b).max() <= cx + 1 and blue(row_b).min() < cx - 50     # 후진 = 왼쪽으로
-
-
-def test_tegrastats_parsing_and_fallback(tmp_path, monkeypatch):
-    from floor_dirt import jetson_power as jp
-    line5 = ("11-19-2026 16:16:27 RAM 2345/6855MB (lfb 2x4MB) CPU [12%@1190,off] GR3D_FREQ 0% "
-             "CPU@45.5C VDD_IN 4523mW/4400mW VDD_CPU_GPU_CV 610mW/610mW VDD_SOC 1424mW/1424mW")
-    r = jp.parse_tegrastats(line5)
-    assert r.label == "VDD_IN" and r.volts is None and r.watts == pytest.approx(4.523)
-    r4 = jp.parse_tegrastats("RAM 1000/3964MB CPU [5%@102] POM_5V_IN 3000/2900 POM_5V_GPU 0/0")
-    assert r4.label == "POM_5V_IN" and r4.watts == pytest.approx(3.0)
-    assert jp.parse_tegrastats("RAM 1/2MB CPU [1%]") is None
-
-    # 센서도 tegrastats도 없는 PC(WSL): 오류 없이 n/a
-    monkeypatch.setattr(jp.shutil, "which", lambda cmd: None)
-    p = jp.JetsonPower(root=str(tmp_path))
-    assert p.source == "none" and p.read() is None
-    p.close()
-
-    from floor_dirt.monitor import dashboard, power_line
-    assert power_line(None, r) == "OpenCR bat -- | Jetson VDD_IN 4.5 W"
-    assert dashboard(1120, {"jetson": r}).shape[1] == 1120
-
-
-def test_tegrastats_reader_with_fake_command(tmp_path):
-    """tegrastats 흉내 스크립트로 백그라운드 읽기 확인."""
-    import os
-    import time
-    from floor_dirt.jetson_power import TegrastatsReader
-    fake = tmp_path / "tegrastats"
-    fake.write_text("#!/bin/sh\nwhile true; do echo 'RAM 1/2MB VDD_IN 5100mW/5000mW'; sleep 0.1; done\n")
-    fake.chmod(0o755)
-    rd = TegrastatsReader(cmd=str(fake))
-    try:
-        t0 = time.time()
-        while rd.latest() is None and time.time() - t0 < 3:
-            time.sleep(0.05)
-        assert rd.latest().watts == pytest.approx(5.1)
-    finally:
-        rd.close()
-    assert not os.path.exists("/proc/{}".format(rd._proc.pid)) or rd._proc.poll() is not None
-
-
-def test_ina3221_without_labels(tmp_path):
-    """채널 이름(in*_label)이 없는 보드: CH 번호로 읽고, 전력이 가장 큰 채널을 입력으로 본다."""
-    from floor_dirt.jetson_power import input_rail, read_rails
-    dev = tmp_path / "hwmon5"
-    dev.mkdir()
-    (dev / "name").write_text("ina3221\n")
-    for n, (mv, ma, en) in {1: (5080, 900, "1"), 2: (5080, 250, "1"), 3: (0, 0, "0")}.items():
-        (dev / "in{}_input".format(n)).write_text(str(mv))
-        (dev / "curr{}_input".format(n)).write_text(str(ma))
-        (dev / "in{}_enable".format(n)).write_text(en)
-    (dev / "in4_input").write_text("12")                       # 분류 전압 채널은 무시
-    rails = read_rails(str(tmp_path))
-    assert [r.label for r in rails] == ["CH1", "CH2"]
-    r = input_rail(rails)
-    assert r.label == "CH1" and r.watts == pytest.approx(5.08 * 0.9)

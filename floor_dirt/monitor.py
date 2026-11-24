@@ -170,32 +170,21 @@ def battery_percent(voltage, empty=10.5, full=12.3):
     return float(min(max((voltage - empty) / (full - empty) * 100.0, 0.0), 100.0))
 
 
-def power_line(opencr=None, jetson=None, show_jetson=True):
-    # type: (Optional[dict], Optional[object], bool) -> str
-    """전원 줄. opencr = {"voltage", "percentage"(0~100 또는 None)}, jetson = jetson_power.Rail 또는 None."""
+def power_line(opencr=None):
+    # type: (Optional[dict]) -> str
+    """전원 줄. opencr = {"voltage", "percentage"(0~100 또는 None)}."""
     if opencr is None:
-        left = "OpenCR bat --"
-    else:
-        v = opencr["voltage"]
-        pct = opencr.get("percentage")
-        left = "OpenCR bat {:.2f} V".format(v)
-        if pct is not None:
-            left += " ({:.0f}%)".format(pct)
-        if v < OPENCR_ALARM_V:
-            left += " CHARGE NOW"
-        elif v < OPENCR_LOW_V:
-            left += " LOW"
-    if not show_jetson:
-        return left
-    if jetson is None:
-        right = "Jetson in n/a"
-    else:
-        right = "Jetson {}".format(jetson.label)
-        if jetson.volts is not None:
-            right += " {:.2f} V".format(jetson.volts)
-        if jetson.watts is not None:
-            right += " {:.1f} W".format(jetson.watts)
-    return left + " | " + right
+        return "OpenCR bat --"
+    v = opencr["voltage"]
+    pct = opencr.get("percentage")
+    line = "OpenCR bat {:.2f} V".format(v)
+    if pct is not None:
+        line += " ({:.0f}%)".format(pct)
+    if v < OPENCR_ALARM_V:
+        line += " CHARGE NOW"
+    elif v < OPENCR_LOW_V:
+        line += " LOW"
+    return line
 
 
 def status_lines(cam_fps=None, scan_hz=None, n_points=0, closest=None, odom=None, cam_ctrl=None, scan_age=None,
@@ -324,7 +313,7 @@ def dashboard(width, st):
 
     st 키 (없으면 회색 '--'):
       cam_fps, cam_on, scan_hz, scan_age, ros_on, n_points, closest (dist, deg),
-      odom {x, y, yaw, v, w}, odom_age, battery {voltage, percentage}, jetson (Rail 또는 None),
+      odom {x, y, yaw, v, w}, odom_age, battery {voltage, percentage},
       cam_ctrl {AE, AF, AWB, ...}, calibrated
     """
     img = np.full((DASH_H, width, 3), C_PANEL, np.uint8)
@@ -368,17 +357,6 @@ def dashboard(width, st):
           bc if v is not None else C_DIM)
     if v is not None and v < 11.0:
         _text(img, "CHARGE NOW", (x + 86, 78), 0.5, C_BAD, 2)
-    j = st.get("jetson")
-    _text(img, "Jetson in", (x, 104), 0.45, C_DIM)
-    if j is None:
-        _text(img, "n/a", (x, 124), 0.5, C_DIM)
-    else:
-        parts = []
-        if j.volts is not None:
-            parts.append("{:.2f} V".format(j.volts))
-        if j.watts is not None:
-            parts.append("{:.1f} W".format(j.watts))
-        _text(img, "   ".join(parts) or "--", (x, 124), 0.5, COL_TEXT)
 
     # 3) 움직임
     x = secs[2] + 14
