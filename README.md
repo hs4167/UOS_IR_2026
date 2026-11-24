@@ -37,6 +37,7 @@ UOS_IR_2026/
 ├── config/                 설정 파일
 │   └── params.yaml         모든 처리 파라미터 (ROI, 격자 해상도, 비교 임계값, 확률, 재방문, 디버그 출력)
 │   ├── camera_settings.yaml  웹캠 노출·초점·화이트밸런스 고정값 (기준·정찰 공통)
+│   ├── amcl.yaml           위치 추정(AMCL)·지도 서버 설정
 │                           (보정 후 생성) camera_intrinsics.yaml, floor_homography.yaml
 ├── docs/                   문서
 │   └── 실험_기록.md        시도·결과·실패 원인 기록 (보고서 자료)
@@ -61,13 +62,16 @@ UOS_IR_2026/
 │   └── jetson.py           jetson-inference/utils 불러오기 (conda에서 시스템 경로 보완)
 │                           (예정) 재방문 (revisit.py)
 ├── launch/                 ROS 2 launch 파일
-│   └── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
+│   ├── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
+│   └── localization.launch.py 위치 추정: 저장된 지도 + AMCL (RViz 없음)
 ├── maps/                   지도
 │   └── reference/          기준 바닥 지도 저장 위치 (reference.npz + reference.yaml, 기준 주행 후 생성)
-│                           (예정) classroom.pgm / classroom.yaml (LiDAR SLAM 지도)
+│                           (SLAM 후 생성) classroom.pgm / classroom.yaml
 ├── ros_nodes/              ROS 2 노드 (토픽 구독·발행만 하고 처리는 floor_dirt 호출)
 │   ├── camera_node.py      웹캠 → /image_raw (시작 시 고정 설정 적용)
-│   └── dataset_recorder.py 주행 녹화: 사진 + 찍은 순간의 위치(TF) + LiDAR → data/<run>/
+│   ├── dataset_recorder.py 주행 녹화: 사진 + 찍은 순간의 위치(TF) + LiDAR → data/<run>/
+│   ├── map_viewer.py       지도 뷰어 (RViz 대신): 지도 + 로봇 + LiDAR → 브라우저 :8082
+│   └── map_saver.py        /map → maps/<이름>.pgm/yaml (기존 지도 백업)
 ├── scripts/                실행 스크립트
 │   ├── robot.sh            환경 설정 + TurtleBot3 bringup (LDS-02 기본, source 하면 환경 설정만)
 │   ├── teleop.sh           키보드 주행
@@ -77,12 +81,17 @@ UOS_IR_2026/
 │   ├── camera.sh           카메라 노드 실행
 │   ├── record.sh           주행 녹화 실행 (data/<run 이름>/)
 │   ├── camera_settings.py  웹캠 노출·초점 고정 적용·조정·저장
+│   ├── slam.sh             SLAM 지도 작성 (slam_toolbox)
+│   ├── save_map.sh         지도 저장 → maps/
+│   ├── map_view.sh         지도 뷰어 실행
+│   ├── localize.sh         위치 추정 (지도 + AMCL, 시작 위치 지정)
+│   ├── set_pose.sh         위치 추정에 현재 위치 다시 알려주기
 │   ├── live_monitor.py     카메라 + LiDAR + odom을 한 화면으로 송출 (노트북 브라우저로 확인)
 │   ├── capture_images.py   웹캠으로 보정용 사진 촬영 (화면 없이 자동/Enter 촬영)
 │   ├── calibrate_intrinsics.py  체커보드 사진들 → camera_intrinsics.yaml
 │   ├── calibrate_floor.py  바닥 보드 사진 + 실측 좌표 → floor_homography.yaml
 │   └── check_floor_projection.py  다른 위치 실측점으로 투영 오차 검사 (통과/실패)
-│                           (예정) SLAM 지도 작성, 위치 추정(AMCL)
+│                           (예정) 재방문
 ├── tests/                  floor_dirt 단위 테스트
 │   ├── test_foundation.py  config·timing·dataset 테스트
 │   ├── test_projection.py  투영 테스트 (좌표 규칙, 왕복 오차, 격자 위치 1칸 이내, 유효 영역)
@@ -95,6 +104,7 @@ UOS_IR_2026/
 │   ├── test_e2e.py         합성 강의실 E2E: 기준 주행 → 정찰 → 오염 3개 검출·오탐 0·위치 오차 2 cm 이내
 │   ├── test_offline.py     오프라인 실행 테스트 (평가 짝짓기, 결과 웹, 스크립트 전체 흐름)
 │   ├── test_recording.py   녹화 준비 테스트 (C920 컨트롤 해석·적용 순서, 주기·짝짓기·대기열, 노드 문법)
+│   ├── test_mapping.py     지도 테스트 (저장한 SLAM 지도 방향, 뷰어 그림, AMCL 설정)
 │   └── test_monitor.py     모니터 테스트 (LiDAR 그림 방향, 카메라 위 LiDAR 점, 상태 줄, 메시지 변환, 재생 실행, 브라우저 스트림)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
 ├── README.md               이 문서
@@ -172,6 +182,24 @@ http://<젯슨IP>:8080
 
 ```bash
 .venv/bin/python scripts/live_monitor.py --dataset data/<run> --loop
+```
+
+### 지도 작성 · 위치 추정 (젯슨)
+
+**지도 작성 (터미널 1 bringup, 터미널 2 키보드 주행은 위와 같음):**
+
+```bash
+./scripts/slam.sh                          # 터미널 3 (conda 끔)
+conda activate test1001 && ./scripts/map_view.sh   # 터미널 4 → 브라우저 http://<젯슨IP>:8082
+conda activate test1001 && ./scripts/save_map.sh   # 다 그렸으면 (maps/classroom.*)
+```
+
+**위치 추정 (로봇을 SLAM 시작 자리·방향에 두고):**
+
+```bash
+./scripts/localize.sh                      # conda 끔
+./scripts/localize.sh --x 1.2 --y -0.5 --yaw 90
+./scripts/set_pose.sh 0 0 0                # 위치가 어긋났을 때
 ```
 
 ### 주행 녹화 (젯슨)
@@ -293,7 +321,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | 기반 | 파라미터, 처리 시간 측정, 프레임 데이터셋 | ✅ |
 | 주행 | bringup, 키보드 주행, 오도메트리 확인 (젯슨) | ✅ |
 | [0] | 카메라 보정, 바닥 투영 | 🟨 코드 완료 (WSL 합성 검증), 실기 보정 전 |
-| [1] | LiDAR 연결, SLAM 지도 작성 | 🟨 LiDAR(LDS-02) 연결·실시간 모니터 완료, SLAM 남음 |
+| [1] | LiDAR 연결, SLAM 지도 작성 | 🟨 LiDAR(LDS-02)·모니터·SLAM/위치 추정 스크립트 완료, 실제 지도 작성 남음 |
 | [2] | 기준 바닥 지도 | 🟨 처리·실행 스크립트 완료 (WSL 합성 검증), 실제 주행 녹화 남음 |
 | [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 처리·실행·평가·결과 웹 완료 (WSL 합성: 3/3 검출, 오탐 0), 실제 주행 남음 |
 | [4] | 재방문, 처리 여부 검증 | ⬜ |
