@@ -160,7 +160,12 @@ def test_image_excluder_without_jetson_needs_flags_off():
     cfg = dict(PARAMS["exclusion"], use_segnet=False, use_detectnet=False)
     ex, dets = ImageExcluder(cfg)(np.zeros((10, 10, 3), np.uint8))
     assert not ex.any() and dets == []
-    if "jetson_inference" not in sys.modules:
+    # jetson-inference가 없는 PC(WSL)에서만: segNet을 켜면 원인을 알려주는 ImportError
+    # (젯슨에서는 실제로 모델을 올리므로 확인하지 않는다. sys.modules만 보면 지연 import라 판별이 안 됨)
+    from floor_dirt.jetson import import_jetson
+    try:
+        import_jetson(need_inference=True)
+    except ImportError:
         with pytest.raises(ImportError):
             ImageExcluder(dict(PARAMS["exclusion"], use_segnet=True))
 
