@@ -51,10 +51,13 @@ exclusion:                # [3] 비교에서 뺄 영역 (물체·로봇 몸체·
   detectnet_classes: [person, chair, backpack, handbag, suitcase]
   detectnet_margin_px: 10 # 박스를 사방으로 넓혀서 제외 [px]
 
-revisit:
-  n_shots: 5
-  restore_ratio: 0.9
-  standoff: 0.35          # 구역 중심이 로봇 전방 이 거리에 오도록 정지
+revisit:                  # [4] 재방문 · 처리 여부 검증
+  n_shots: 5              # 구역마다 정지해서 찍을 장수
+  restore_ratio: 0.9      # 복원율(기준과 같아진 칸 비율) 이 이상이면 "처리 완료"
+  standoff: 0.35          # 구역 중심이 로봇 전방 이 거리에 오도록 정지 (근거리 ROI 가운데 ≈ 0.375 m)
+  clearance: 0.22         # 설 자리는 지도상 벽·장애물에서 이만큼 떨어져야 함 (로봇 반경 0.15 + 여유)
+  min_coverage: 0.5       # 구역 칸의 이 비율 이상을 봐야 판정 (못 보면 "확인 불가")
+  hit_frac: 0.5           # 한 칸을 여러 장에서 봤을 때, 달라짐(hit) 비율이 이 미만이면 "기준과 같음"
 
 viz:
   update_interval_s: 2.0

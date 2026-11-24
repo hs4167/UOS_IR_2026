@@ -233,3 +233,32 @@ def debug_overlay(frame_bgr, floor_mask=None, exclude_mask=None, roi_poly_px=Non
         cv2.putText(img, line, (8, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
     return img
 
+
+
+def draw_revisit_plan(img, grid, plan, start_pose=None, scale=1):
+    # type: (np.ndarray, GridMeta, Sequence[dict], Optional[Pose], int) -> np.ndarray
+    """render_dirt_map 그림(위쪽 = +y) 위에 재방문 계획: 시작점 → 설 자리(번호·바라보는 방향) 순서 선."""
+    H_px = img.shape[0]
+    col = (0, 150, 0)
+    pts = []
+    if start_pose is not None:
+        pts.append(_to_px(grid, [start_pose[:2]], scale, H_px)[0])
+        p = tuple(np.round(pts[-1]).astype(int))
+        cv2.drawMarker(img, p, col, cv2.MARKER_STAR, 14, 2)
+    for step in plan:
+        g = step.get("goal")
+        if g is None:
+            c = tuple(np.round(_to_px(grid, [step["center"]], scale, H_px)[0]).astype(int))
+            cv2.drawMarker(img, c, (0, 0, 230), cv2.MARKER_TILTED_CROSS, 16, 2)   # 설 자리 없음
+            continue
+        p = _to_px(grid, [g[:2]], scale, H_px)[0]
+        tip = _to_px(grid, [(g[0] + 0.2 * np.cos(g[2]), g[1] + 0.2 * np.sin(g[2]))], scale, H_px)[0]
+        if pts:
+            cv2.line(img, tuple(np.round(pts[-1]).astype(int)), tuple(np.round(p).astype(int)), col, 1, cv2.LINE_AA)
+        pts.append(p)
+        pi = tuple(np.round(p).astype(int))
+        cv2.circle(img, pi, max(3, scale * 3), col, -1, cv2.LINE_AA)
+        cv2.arrowedLine(img, pi, tuple(np.round(tip).astype(int)), col, max(1, scale // 2), cv2.LINE_AA, tipLength=0.3)
+        cv2.putText(img, str(step["step"]), (pi[0] + 5, pi[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4 + 0.1 * scale, col,
+                    max(1, scale // 2), cv2.LINE_AA)
+    return img

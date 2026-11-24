@@ -207,3 +207,81 @@ def evaluation_markdown(ev):
             it["name"], it["x"], it["y"], "O" if it["found"] else "X",
             "-" if it["region"] is None else it["region"], cm(it["error_m"])))
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- [4] 재방문
+
+def load_patrol_regions(results_dir, params):
+    """정찰 결과 폴더 → (구역 목록, 칸별 구역 번호). dirt_map.npz에서 다시 묶어 json과 같은지 확인한다."""
+    from floor_dirt.dirt_map import DirtMap
+    dm = DirtMap.load(results_dir, params["dirt_map"])
+    regions, labels = dm.extract_regions()
+    saved = load_regions(os.path.join(results_dir, "dirt_regions.json"))
+    same = len(saved) == len(regions) and all(
+        a.id == b.id and math.hypot(a.center[0] - b.center[0], a.center[1] - b.center[1]) < 1e-3
+        for a, b in zip(saved, regions))
+    if not same:
+        raise ValueError("dirt_regions.json과 dirt_map.npz에서 다시 묶은 구역이 다릅니다 "
+                         "(정찰 후 params의 dirt_map 설정이 바뀌었는지 확인)")
+    return regions, labels
+
+
+def plan_from_results(results_dir, map_yaml, start_pose, params):
+    """정찰 결과 + LiDAR 지도 → 재방문 계획 (방문 순서, 설 자리). revisit_plan.json·png 저장."""
+    from floor_dirt.revisit import free_space_checker, plan_revisit
+    from floor_dirt.viz import draw_revisit_plan, render_dirt_map, save_png_atomic
+    from floor_dirt.dirt_map import DirtMap
+    regions, _ = load_patrol_regions(results_dir, params)
+    rv = params["revisit"]
+    is_free = free_space_checker(map_yaml, float(rv["clearance"])) if map_yaml else None
+    plan = plan_revisit(regions, start_pose, float(rv["standoff"]), is_free)
+    with open(os.path.join(results_dir, "revisit_plan.json"), "w", encoding="utf-8") as f:
+        json.dump({"start": list(start_pose), "map": map_yaml, "plan": plan}, f, ensure_ascii=False, indent=2)
+    dm = DirtMap.load(results_dir, params["dirt_map"])
+    bg = lidar_background(map_yaml, dm.grid) if map_yaml else None
+    scale = 2
+    img = render_dirt_map(dm, regions, background=bg, scale=scale, legend=False)
+    draw_revisit_plan(img, dm.grid, plan, start_pose, scale)
+    save_png_atomic(os.path.join(results_dir, "revisit_plan.png"), img)
+    return plan
+
+
+def run_revisit(run_dir, results_dir, reference_dir, params, H, maps=None, out_name="revisit", promote=False,
+                excluder=None, quiet=False):
+    """재방문 때 녹화한 데이터셋 → 구역별 복원율 판정 (results/<정찰>/revisit.json). promote면 기준 갱신."""
+    from floor_dirt.pipeline import REVISIT_STAGES, RevisitProcessor
+    from floor_dirt.revisit import CLEANED, promote_reference, write_report
+    regions, labels = load_patrol_regions(results_dir, params)
+    reference = FloorGrid.load(reference_dir)
+    if reference.grid != patrol_grid(results_dir):
+        raise ValueError("기준 격자와 정찰 결과 격자가 다릅니다")
+    timer = StageTimer(REVISIT_STAGES, os.path.join(results_dir, out_name + "_timing.csv"))
+    rp = RevisitProcessor(params, reference, H, labels, undistort_maps=maps, timer=timer, excluder=excluder)
+    ds = FrameDataset(run_dir)
+    t0 = time.monotonic()
+    for i, f in enumerate(ds, 1):
+        rp.process(f)
+        if not quiet:
+            _progress(i, len(ds), t0, prefix="[revisit] ")
+    rv = params["revisit"]
+    results = rp.verifier.results([r.id for r in regions], restore_ratio=float(rv["restore_ratio"]),
+                                  min_coverage=float(rv["min_coverage"]), hit_frac=float(rv["hit_frac"]))
+    for res, r in zip(results, regions):
+        res["center"] = [round(float(v), 3) for v in r.center]
+    rp.close()
+    extra = {"run": run_dir, "patrol": results_dir, "reference": reference_dir, "frames": len(ds)}
+    if promote:
+        cleaned = [r["id"] for r in results if r["status"] == CLEANED]
+        extra["promote"] = promote_reference(reference_dir, rp.new_floor, labels, cleaned,
+                                             min_count=int(params["reference"]["min_count"]),
+                                             note="revisit {}".format(os.path.basename(os.path.normpath(run_dir))))
+    plan_path = os.path.join(results_dir, "revisit_plan.json")
+    plan = json.load(open(plan_path, encoding="utf-8"))["plan"] if os.path.exists(plan_path) else []
+    return write_report(os.path.join(results_dir, out_name + ".json"), plan, results, extra)
+
+
+def patrol_grid(results_dir):
+    """정찰 결과의 격자 정의 (dirt_map.npz)."""
+    with np.load(os.path.join(results_dir, "dirt_map.npz")) as d:
+        g = d["grid"]
+    return GridMeta(float(g[0]), float(g[1]), float(g[2]), int(g[3]), int(g[4]))

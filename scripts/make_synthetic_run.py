@@ -5,6 +5,8 @@
   synthetic_ref/       기준 주행 (청소 직후 바닥) 프레임 데이터셋
   synthetic_patrol/    정찰 주행 (오염 3개 + 가방 + 신발 + 조명 10% 밝음) 프레임 데이터셋
     truth.json         오염 정답 위치 (evaluate.py용)
+  synthetic_revisit/   청소 후 재방문 (빨간 종이·회색 먼지는 치움, 초록 종이는 그대로, 조명 5% 밝음)
+    truth_revisit.json 구역별 정답 처리 여부
   synthetic_map/       가짜 LiDAR 지도 classroom.yaml/pgm
   synthetic_calib/     합성 카메라 보정 파일 camera_intrinsics.yaml, floor_homography.yaml
 
@@ -26,7 +28,9 @@ from floor_dirt.calibration import FloorCalibration, Intrinsics, save_floor_cali
 from floor_dirt.config import REPO_ROOT  # noqa: E402
 from floor_dirt.dataset import Frame, FrameDatasetWriter  # noqa: E402
 from floor_dirt.projection import map_to_robot  # noqa: E402
-from floor_dirt.synthetic import add_sensor_noise, classroom_scene, item_outline, noisy, render, wide_camera  # noqa: E402
+from floor_dirt.synthetic import (  # noqa: E402
+    FloorTexture, _paint, add_sensor_noise, classroom_scene, item_outline, noisy, render, wide_camera,
+)
 
 MAP_ORIGIN = (-0.5, 0.0)
 MAP_SIZE = (4.0, 3.0)   # m
@@ -84,7 +88,21 @@ def main():
              "objects_not_dirt": [{"name": it.name, "x": it.x, "y": it.y} for it in (scene.bag, scene.shoes)]}
     with open(os.path.join(patrol, "truth.json"), "w", encoding="utf-8") as f:
         json.dump(truth, f, ensure_ascii=False, indent=2)
-    print("기준 {}장, 정찰 {}장 → {}".format(n1, n2, args.out))
+    # 청소 후 재방문: 초록 종이만 남김 (가방·신발도 치움), 조명 5% 밝음. 정찰 경로를 한 장 걸러 다시 찍음
+    tex = scene.clean.image.astype(np.float32)
+    left = [it for it in scene.dirt if it.name == "green_paper"]
+    for it in left:
+        _paint(tex, scene.clean.resolution, it, (scene.clean.origin_x, scene.clean.origin_y))
+    revisit_tex = FloorTexture(np.clip(tex * 1.05, 0, 255).astype(np.uint8), scene.clean.origin_x,
+                               scene.clean.origin_y, scene.clean.resolution)
+    rv_scene = scene._replace(poses=scene.poses[::2])
+    revisit = os.path.join(args.out, "synthetic_revisit")
+    n3 = record(revisit, rv_scene, revisit_tex, rng, 0.004, 0.4, False,
+                {"source": "synthetic", "kind": "revisit", "light": "조명 5% 밝음"})
+    with open(os.path.join(revisit, "truth_revisit.json"), "w", encoding="utf-8") as f:
+        json.dump({"items": [{"name": it.name, "x": it.x, "y": it.y, "cleaned": it not in left} for it in scene.dirt]},
+                  f, ensure_ascii=False, indent=2)
+    print("기준 {}장, 정찰 {}장, 재방문 {}장 → {}".format(n1, n2, n3, args.out))
     print("다음: python scripts/run_reference.py --run {} --map {} --calib-dir {} --no-dnn".format(
         os.path.relpath(os.path.join(args.out, "synthetic_ref")), os.path.relpath(os.path.join(args.out, "synthetic_map", "classroom.yaml")),
         os.path.relpath(calib)))

@@ -72,6 +72,10 @@ def run_summary(root, run):
         with open(ev, "r", encoding="utf-8") as f:
             data["evaluation"] = json.load(f)
     data["timing"] = timing_medians(os.path.join(d, "timing.csv"))
+    rv = os.path.join(d, "revisit.json")
+    if os.path.isfile(rv):
+        with open(rv, "r", encoding="utf-8") as f:
+            data["revisit"] = json.load(f)
     from floor_dirt.tegralog import summarize_file
     data["resources"] = summarize_file(os.path.join(d, "tegrastats.log")) if os.path.isfile(
         os.path.join(d, "tegrastats.log")) else None
@@ -202,6 +206,7 @@ PAGE = r"""<!doctype html>
   <section>
     <div class="card"><h2>요약</h2><div class="stats" id="stats"></div></div>
     <div class="card"><h2>오염 구역</h2><div id="regions"></div></div>
+    <div class="card" id="rvcard" hidden><h2>재방문 검증</h2><div id="rv"></div></div>
     <div class="card" id="evalcard" hidden><h2>평가 (정답과 비교)</h2><div id="eval"></div></div>
     <div class="card"><h2>프레임당 처리 시간 (중앙값)</h2><div id="timing"></div></div>
     <div class="card" id="rescard" hidden><h2>젯슨 자원 사용 (tegrastats)</h2><div id="res"></div></div>
@@ -242,6 +247,16 @@ async function refresh() {
       <td class="num">${fmt(r.max_p)}</td>
       <td>${photos[r.id] ? `<a href="/files/${encodeURIComponent(current)}/${photos[r.id]}" target="_blank"><img src="/files/${encodeURIComponent(current)}/${photos[r.id]}"></a>` : "-"}</td></tr>`).join("") + `</table>`
     : `<p class="empty">아직 오염 구역이 없습니다</p>`;
+  const rv = d.revisit;
+  $("rvcard").hidden = !rv;
+  if (rv) {
+    const cls = { cleaned: "ok", needs_cleaning: "bad", unverified: "" };
+    $("rv").innerHTML = `<div class="stats">` + stat("처리 완료", rv.summary.cleaned) + stat("재청소 필요", rv.summary.needs_cleaning) +
+      stat("확인 불가", rv.summary.unverified) + `</div><table style="margin-top:8px"><tr><th>구역</th><th>판정</th><th>복원율</th><th>본 비율</th><th>사진</th></tr>` +
+      rv.regions.map(r => `<tr><td>${r.id}</td><td class="${cls[r.status]}">${r.status_ko}</td>
+        <td class="num">${r.restoration_ratio === null ? "-" : Math.round(r.restoration_ratio * 100) + "%"}</td>
+        <td class="num">${Math.round(r.coverage * 100)}%</td><td class="num">${r.frames}</td></tr>`).join("") + `</table>`;
+  }
   const ev = d.evaluation;
   $("evalcard").hidden = !ev;
   if (ev) {

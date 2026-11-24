@@ -63,8 +63,8 @@ UOS_IR_2026/
 │   ├── camera_settings.py  웹캠 설정: v4l2-ctl 컨트롤 읽기, 자동 끄기→값 순서로 적용 계획
 │   ├── recording.py        녹화 로직: 저장 주기, 사진·스캔 시각 짝짓기, TF 대기열
 │   ├── occupancy.py        LiDAR 지도: OccupancyGrid → pgm/yaml 저장, 지도 뷰어 그림
-│   └── tegralog.py         젯슨 자원 기록: 녹화·처리 중 tegrastats.log 저장, 메모리·CPU·GPU·온도 요약
-│                           (예정) 재방문 (revisit.py)
+│   ├── tegralog.py         젯슨 자원 기록: 녹화·처리 중 tegrastats.log 저장, 메모리·CPU·GPU·온도 요약
+│   └── revisit.py          재방문: 최단 방문 순서, 설 자리(벽 피하기), 구역별 복원율 판정, 기준 갱신(백업)
 ├── launch/                 ROS 2 launch 파일
 │   ├── robot_lds02.launch.py  bringup (LDS-02 LiDAR용, 설치된 bringup이 LDS-01 드라이버만 띄워서 따로 만듦)
 │   └── localization.launch.py 위치 추정: 저장된 지도 + AMCL (RViz 없음)
@@ -109,6 +109,7 @@ UOS_IR_2026/
 │   ├── test_offline.py     오프라인 실행 테스트 (평가 짝짓기, 결과 웹, 스크립트 전체 흐름)
 │   ├── test_recording.py   녹화 준비 테스트 (C920 컨트롤 해석·적용 순서, 주기·짝짓기·대기열, 노드 문법)
 │   ├── test_tegralog.py    자원 기록 테스트 (젯슨 실제 출력 해석, 요약, 가짜 tegrastats, 웹 표시)
+│   ├── test_revisit.py     재방문 테스트 (순서 최적성, 설 자리, 복원율, 기준 갱신, 합성 재방문 전체)
 │   ├── test_mapping.py     지도 테스트 (저장한 SLAM 지도 방향, 뷰어 그림, AMCL 설정)
 │   └── test_monitor.py     모니터 테스트 (LiDAR 그림 방향, 카메라 위 LiDAR 점, 상태 줄, 메시지 변환, 재생 실행, 브라우저 스트림)
 ├── .gitignore              git 제외 목록 (.venv/, data/, results/, 캐시 등)
@@ -288,6 +289,14 @@ python scripts/run_patrol.py --run data/<정찰 run> --map maps/classroom.yaml
 python scripts/evaluate.py --results results/<정찰 run> --truth data/<정찰 run>/truth.json
 ```
 
+**재방문 계획 → (청소 후 재방문 녹화) → 판정:**
+
+```bash
+python scripts/plan_revisit.py --results results/<정찰 run> --map maps/classroom.yaml
+python scripts/run_revisit.py --run data/<재방문 run> --results results/<정찰 run>
+python scripts/run_revisit.py --run data/<재방문 run> --results results/<정찰 run> --promote   # 처리 완료 구역을 새 기준으로
+```
+
 **결과 웹 (브라우저 http://<주소>:8000):**
 
 ```bash
@@ -302,6 +311,8 @@ python scripts/serve_results.py
 .venv/bin/python scripts/serve_results.py &
 .venv/bin/python scripts/run_patrol.py --run data/synthetic_patrol --map data/synthetic_map/classroom.yaml --reference data/synthetic_reference --calib-dir data/synthetic_calib --no-dnn --synthetic-detector
 .venv/bin/python scripts/evaluate.py --results results/synthetic_patrol --truth data/synthetic_patrol/truth.json
+.venv/bin/python scripts/plan_revisit.py --results results/synthetic_patrol --map data/synthetic_map/classroom.yaml --start 0.35 1.32 0
+.venv/bin/python scripts/run_revisit.py --run data/synthetic_revisit --results results/synthetic_patrol --reference data/synthetic_reference --calib-dir data/synthetic_calib --no-dnn
 ```
 
 ### 개발환경 테스트
@@ -331,7 +342,7 @@ uv pip install --python .venv/bin/python -r requirements-dev.txt
 | [1] | LiDAR 연결, SLAM 지도 작성 | 🟨 LiDAR(LDS-02)·모니터·SLAM/위치 추정 스크립트 완료, 실제 지도 작성 남음 |
 | [2] | 기준 바닥 지도 | 🟨 처리·실행 스크립트 완료 (WSL 합성 검증), 실제 주행 녹화 남음 |
 | [3] | 오염 확률 지도, 오염 구역 추출 | 🟨 처리·실행·평가·결과 웹 완료 (WSL 합성: 3/3 검출, 오탐 0), 실제 주행 남음 |
-| [4] | 재방문, 처리 여부 검증 | ⬜ |
+| [4] | 재방문, 처리 여부 검증 | 🟨 계획·판정·기준 갱신 완료 (WSL 합성: 3구역 모두 정답), 재방문 노드(Nav2) 남음 |
 
 ## References
 

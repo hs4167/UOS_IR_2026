@@ -21,7 +21,7 @@ from floor_dirt.debug_stream import DebugOutput
 from floor_dirt.dirt_map import DirtMap, Region, export_regions
 from floor_dirt.floor_grid import FloorGrid
 from floor_dirt.masks import Detection, ImageExcluder, window_keep_mask
-from floor_dirt.projection import GridMeta, WarpResult, roi_corners_pixel, undistort, warp_to_grid
+from floor_dirt.projection import GridMeta, WarpResult, roi_corners_pixel, undistort, warp_to_grid, window_slices
 from floor_dirt.timing import StageTimer
 from floor_dirt.viz import debug_overlay, region_crop, render_dirt_map, save_png_atomic, window_to_image
 
@@ -192,3 +192,39 @@ class Patroller(_FrameProcessor):
             "map_scale": scale,
         })
         return regions
+
+
+REVISIT_STAGES = ["undistort", "exclude_image", "warp", "exclude_grid", "compare", "verify", "debug"]
+
+
+class RevisitProcessor(_FrameProcessor):
+    """[4] 재방문: 오염 구역 칸만 기준과 비교해 복원율을 쌓고, 기준 갱신용으로 새 바닥도 누적한다."""
+
+    def __init__(self, params, reference, H, labels, **kw):
+        # type: (dict, FloorGrid, np.ndarray, np.ndarray, ...) -> None
+        super().__init__(params, reference.grid, H, REVISIT_STAGES, **kw)
+        from floor_dirt.revisit import RegionVerifier
+        self.reference = reference
+        self.labels = labels
+        self.verifier = RegionVerifier(labels)
+        self.new_floor = FloorGrid(reference.grid, min_count=reference.min_count)
+
+    def process(self, frame):
+        # type: (Frame) -> List[int]
+        """한 장 처리. 이 장에 보인 구역 번호들을 돌려준다."""
+        prep = self._prepare(frame)
+        ids = []
+        cmp = None
+        if prep.warp is not None:
+            with self.timer.stage("compare"):
+                cmp = compare_warp(prep.warp, self.reference, self.params["compare"], mask=prep.keep)
+            with self.timer.stage("verify"):
+                ids = self.verifier.add(prep.warp, cmp)
+                if ids:
+                    rs, cs = window_slices(prep.warp)
+                    self.new_floor.add_warp(prep.warp, prep.keep & (self.labels[rs, cs] > 0))
+        self._debug(frame.frame_id, prep, hit=None if cmp is None else cmp.hit,
+                    lines=["regions in view: {}".format(ids or "-")])
+        self.n_frames += 1
+        self.timer.end_frame(frame.frame_id)
+        return ids
