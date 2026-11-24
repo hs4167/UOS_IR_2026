@@ -155,3 +155,27 @@ def describe(available):
         "AF": "-" if af is None else ("OFF" if af == 0 else "AUTO"),
         "AWB": "-" if awb is None else ("OFF" if awb == 0 else "AUTO"),
     }
+
+
+def apply_config(config_path, device=None, log=print):
+    # type: (str, Optional[str], callable) -> bool
+    """설정 파일(config/camera_settings.yaml)의 고정값을 적용한다. 적용했으면 True.
+
+    웹캠 설정은 다시 꽂거나 재부팅하면 자동으로 돌아가므로, 카메라를 여는 프로그램마다 시작할 때 부른다.
+    v4l2-ctl이 없거나(WSL) 설정 파일이 없으면 경고만 하고 넘어간다.
+    """
+    import os
+    if not os.path.exists(config_path):
+        log("[camera] 설정 파일이 없어 고정값을 적용하지 않음: {}".format(config_path))
+        return False
+    cfg = load_settings(config_path)
+    dev = device or cfg.get("device", "/dev/video0")
+    try:
+        _, warnings = apply(dev, cfg.get("controls") or {})
+    except (OSError, RuntimeError) as e:
+        log("[camera] 고정값 적용 실패 (자동 노출·초점 상태일 수 있음): {}".format(e))
+        return False
+    for w in warnings:
+        log("[camera] 경고: {}".format(w))
+    log("[camera] 고정값 적용: {}".format(describe(read_controls(dev))))
+    return True

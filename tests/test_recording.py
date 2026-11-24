@@ -129,3 +129,13 @@ def test_ros_nodes_compile_and_scripts_parse():
 def test_record_sh_requires_run_name():
     r = subprocess.run(["bash", os.path.join(REPO_ROOT, "scripts", "record.sh")], capture_output=True, text=True)
     assert r.returncode == 1 and "사용법" in r.stdout
+
+
+def test_apply_config_skips_without_v4l2(tmp_path, monkeypatch):
+    from floor_dirt import camera_settings as cs
+    msgs = []
+    assert cs.apply_config(str(tmp_path / "none.yaml"), log=msgs.append) is False and "없어" in msgs[0]
+    monkeypatch.setattr(cs.shutil, "which", lambda name: None)           # v4l2-ctl 없음 (WSL)
+    msgs.clear()
+    assert cs.apply_config(os.path.join(REPO_ROOT, "config", "camera_settings.yaml"), log=msgs.append) is False
+    assert "실패" in msgs[0]

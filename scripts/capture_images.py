@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """USB 웹캠(C920)으로 보정용 이미지를 찍어 저장한다. 화면 없이(SSH) 쓸 수 있다.
 
-주의: 찍기 전에 자동 초점·자동 노출을 꺼서 고정해야 한다 (초점이 바뀌면 보정이 무의미).
+시작할 때 config/camera_settings.yaml의 고정 초점·노출을 적용한다 (초점이 바뀌면 보정이 무의미).
 
 사용 예 (젯슨, conda test1001)
   # 내부 보정용: 보드를 화면 구석구석, 여러 각도로 움직이며 2초마다 20장 (보드가 보일 때만 저장)
@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import cv2  # noqa: E402
 
 from floor_dirt.calibration import find_chessboard  # noqa: E402
+from floor_dirt.camera_settings import apply_config  # noqa: E402
+from floor_dirt.config import REPO_ROOT  # noqa: E402
 
 
 def parse_pattern(text):
@@ -60,11 +62,14 @@ def main():
     ap.add_argument("--manual", action="store_true", help="Enter를 칠 때마다 1장 저장")
     ap.add_argument("--pattern", default=None, help="예: 9x6. 주면 체커보드가 보이는 프레임만 저장")
     ap.add_argument("--warmup", type=int, default=30, help="시작 시 버릴 프레임 수 (노출 안정화)")
+    ap.add_argument("--no-settings", action="store_true", help="웹캠 고정값을 적용하지 않음 (기본은 적용)")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
     pattern = parse_pattern(args.pattern) if args.pattern else None
     cap = open_camera(args.device, args.width, args.height, args.fourcc)
+    if not args.no_settings:   # 보정 사진도 기준·정찰과 같은 초점·노출로 찍어야 한다
+        apply_config(os.path.join(REPO_ROOT, "config", "camera_settings.yaml"), args.device)
     for _ in range(args.warmup):
         cap.read()
 

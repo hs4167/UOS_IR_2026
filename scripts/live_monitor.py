@@ -252,6 +252,8 @@ def main():
     ap.add_argument("--out-dir", default=os.path.join(REPO_ROOT, "results", "monitor"), help="file 출력 폴더")
     ap.add_argument("--every", type=int, default=10, help="file 출력: N장마다 저장")
     ap.add_argument("--no-calib", action="store_true", help="보정 파일이 있어도 ROI·LiDAR 겹치기 안 함")
+    ap.add_argument("--no-settings", action="store_true",
+                    help="웹캠 고정값(config/camera_settings.yaml)을 적용하지 않음 (기본은 시작할 때 적용)")
     ap.add_argument("--intrinsics", default=DEFAULT_INTRINSICS_PATH)
     ap.add_argument("--floor", default=DEFAULT_FLOOR_PATH)
     args = ap.parse_args()
@@ -282,6 +284,10 @@ def main():
         replay = DatasetReplay(args.dataset, args.fps, loop=args.loop)
     elif not args.no_camera and not args.topic:
         cam = DirectCamera(args.camera, args.width, args.height, args.fourcc)
+        if not args.no_settings:   # 다시 꽂거나 재부팅하면 자동 노출·초점으로 돌아가므로 매번 적용
+            from floor_dirt.camera_settings import apply_config
+            apply_config(os.path.join(REPO_ROOT, "config", "camera_settings.yaml"), args.camera,
+                         log=lambda m: print(m, flush=True))
     ros = None
     if not args.dataset and not args.no_ros:
         ros = RosInputs(args.topic, lidar_pose)

@@ -1,0 +1,10 @@
+# 테스트 전용 설정 덮어쓰기 (tests/conftest.py가 FLOOR_DIRT_PARAMS_OVERRIDE로 지정).
+# 합성 카메라·합성 장면은 아래 ROI에 맞춰 만들어져 있다. 실제 로봇 ROI(config/params.yaml)를 바꿔도
+# 테스트 결과가 흔들리지 않도록 고정한다.
+roi:
+  x_min: 0.15
+  x_max: 0.60
+  y_min: -0.25
+  y_max: 0.25
+revisit:
+  standoff: 0.35

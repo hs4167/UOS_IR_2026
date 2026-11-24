@@ -89,3 +89,13 @@ def test_dataset_roundtrip(tmp_path):
             assert got.scan is None
         else:
             assert np.array_equal(got.scan, orig.scan)
+
+
+def test_env_override_file(tmp_path, monkeypatch):
+    """FLOOR_DIRT_PARAMS_OVERRIDE: params.yaml을 고치지 않고 일부 항목만 바꾼다 (테스트·비교 실험용)."""
+    f = tmp_path / "ov.yaml"
+    f.write_text("compare:\n  k: 7.5\n")
+    monkeypatch.setenv(config.OVERRIDE_ENV, str(f))
+    p = config.load_params(overrides={"compare": {"min_thr": 1.0}})
+    assert config.get(p, "compare.k") == 7.5 and config.get(p, "compare.min_thr") == 1.0
+    assert config.get(p, "compare.method")                                # 나머지는 그대로
