@@ -1,0 +1,24 @@
+grid:
+  resolution: 0.01
+  origin_x: -0.7448383003964234
+  origin_y: -0.31567476696148095
+  width: 180
+  height: 115
+color_space: opencv_lab_8bit
+min_count: 3
+runs:
+- test_record_1
+created: '2026-11-27T16:16:10'
+coverage:
+  floor_cells: 20700
+  covered_cells: 2471
+  covered_ratio: 0.1193719806763285
+  covered_area_m2: 0.24710000000000001
+  missing_area_m2: 1.8229000000000002
+frames: 143
+coverage_floor:
+  floor_cells: 11325
+  covered_cells: 1967
+  covered_ratio: 0.17368653421633554
+  covered_area_m2: 0.1967
+  missing_area_m2: 0.9358000000000001
