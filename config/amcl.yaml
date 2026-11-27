@@ -37,15 +37,12 @@ amcl:
     update_min_d: 0.05
     update_min_a: 0.1
     save_pose_rate: 0.5
-    # 시작 위치 (localize.sh --x --y --yaw 로 덮어씀). SLAM을 시작한 자리에 두면 (0, 0, 0)
+    # 시작 위치는 여기 적지 않는다: launch가 localize.sh --x --y --yaw 값을 넘김 (SLAM을 시작한 자리면 0, 0, 0).
+    # 여기 적으면 Foxy launch에서 이 파일의 노드별 값이 launch 값보다 우선해 시작 위치가 항상 이 값이 된다.
     set_initial_pose: true
-    initial_pose:
-      x: 0.0
-      y: 0.0
-      z: 0.0
-      yaw: 0.0
 
 map_server:
   ros__parameters:
     use_sim_time: false
-    yaml_filename: ""              # launch에서 지정
+    # yaml_filename은 적지 않는다: launch가 localize.sh --map 값을 넘김.
+    # 여기 ""로 적어 두면 launch 값보다 우선해 "YAML file is empty"로 지도 서버가 실패한다 (2026-11-27 실기).

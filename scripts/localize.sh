@@ -23,7 +23,9 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -f "$MAP" ]] || { echo "[localize.sh] 지도가 없습니다: $MAP (먼저 slam.sh → save_map.sh)"; exit 1; }
 MAP="$(cd "$(dirname "$MAP")" && pwd)/$(basename "$MAP")"
-YAW=$(python3 -c "import math; print(math.radians(float('$YAW_DEG')))") || exit 1
+# AMCL의 initial_pose.*는 실수형 파라미터: '--x 0'처럼 정수로 넘기면 launch가 int로 읽어 AMCL이 거부하므로 실수로 바꿔 넘긴다
+read -r X Y YAW < <(python3 -c "import math; print(float('$X'), float('$Y'), math.radians(float('$YAW_DEG')))") || exit 1
+[[ -n "$YAW" ]] || { echo "[localize.sh] --x --y --yaw 는 숫자여야 합니다"; exit 1; }
 
 # shellcheck source=robot.sh
 source "$SCRIPT_DIR/robot.sh" || exit 1

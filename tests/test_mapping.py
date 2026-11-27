@@ -77,6 +77,9 @@ def test_amcl_config_for_turtlebot3():
     assert p["use_sim_time"] is False and p["set_initial_pose"] is True
     assert p["update_min_d"] <= 0.1                              # 사진마다 위치가 덜 밀리게
     assert "map_server" in cfg
+    # launch가 넘기는 값(지도 경로, 시작 위치)은 파일에 두지 않는다: Foxy에선 파일의 노드별 값이 launch 값보다 우선함
+    assert "yaml_filename" not in cfg["map_server"]["ros__parameters"]
+    assert "initial_pose" not in p
 
 
 def test_backup_map_points_yaml_to_backup_image(tmp_path):
