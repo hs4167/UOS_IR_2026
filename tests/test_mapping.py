@@ -8,7 +8,7 @@ import yaml
 
 from floor_dirt.config import REPO_ROOT
 from floor_dirt.floor_grid import lidar_free_mask
-from floor_dirt.occupancy import FREE, OCC, UNKNOWN, map_stats, occupancy_to_image, render_map_view, save_map
+from floor_dirt.occupancy import FREE, OCC, UNKNOWN, backup_map, map_stats, occupancy_to_image, render_map_view, save_map
 from floor_dirt.projection import GridMeta, cell_to_map
 from floor_dirt.viz import lidar_background
 
@@ -77,3 +77,19 @@ def test_amcl_config_for_turtlebot3():
     assert p["use_sim_time"] is False and p["set_initial_pose"] is True
     assert p["update_min_d"] <= 0.1                              # 사진마다 위치가 덜 밀리게
     assert "map_server" in cfg
+
+
+def test_backup_map_points_yaml_to_backup_image(tmp_path):
+    """같은 이름으로 다시 저장할 때 백업 yaml이 새 지도가 아니라 백업 그림을 가리켜야 한다."""
+    path = str(tmp_path / "box")
+    assert backup_map(path, "x") is None                        # 기존 지도 없음
+    old = [0] * 4 + [100] * 2
+    save_map(path, old, 3, 2, 0.05, (-0.5, -0.3, 0.0))
+    backup = backup_map(path, "20261127_154610")
+    assert backup == path + "_backup_20261127_154610"
+    assert not (tmp_path / "box.yaml").exists() and (tmp_path / "box_backup_20261127_154610.pgm").exists()
+    meta = yaml.safe_load(open(backup + ".yaml"))
+    assert meta["image"] == "box_backup_20261127_154610.pgm"
+    assert meta["origin"] == [-0.5, -0.3, 0.0]
+    save_map(path, [0] * 6, 3, 2, 0.05, (-0.7, -0.3, 0.0))     # 새 지도는 원래 이름 그대로
+    assert yaml.safe_load(open(path + ".yaml"))["image"] == "box.pgm"

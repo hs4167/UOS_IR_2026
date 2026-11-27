@@ -46,6 +46,27 @@ def save_map(path_noext, data, width, height, resolution, origin, free_thresh=FR
     return pgm, yml
 
 
+def backup_map(path_noext, stamp):
+    # type: (str, str) -> Optional[str]
+    """기존 지도(pgm + yaml)를 <이름>_backup_<stamp>.*로 옮긴다. yaml의 image: 줄도 새 pgm 이름으로 고친다.
+
+    고치지 않으면 백업 yaml이 새로 저장한 지도 그림을 가리켜, 백업을 열어도 새 지도가 보인다.
+    기존 지도가 없으면 None.
+    """
+    if not os.path.exists(path_noext + ".yaml"):
+        return None
+    backup = path_noext + "_backup_" + stamp
+    for ext in (".yaml", ".pgm"):
+        if os.path.exists(path_noext + ext):
+            os.replace(path_noext + ext, backup + ext)
+    with open(backup + ".yaml", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    lines = ["image: " + os.path.basename(backup) + ".pgm" if ln.startswith("image:") else ln for ln in lines]
+    with open(backup + ".yaml", "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return backup
+
+
 def map_stats(data, resolution):
     """빈 곳·벽·모름 넓이 [m²]."""
     d = np.asarray(data, dtype=np.int16)

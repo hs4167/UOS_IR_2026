@@ -12,7 +12,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from floor_dirt.config import REPO_ROOT  # noqa: E402
-from floor_dirt.occupancy import map_stats, save_map  # noqa: E402
+from floor_dirt.occupancy import backup_map, map_stats, save_map  # noqa: E402
 
 
 def main():
@@ -40,11 +40,8 @@ def main():
     m = got["map"]
     info = m.info
     o = info.origin.position
-    if os.path.exists(args.out + ".yaml"):
-        backup = args.out + "_backup_" + time.strftime("%Y%m%d_%H%M%S")
-        for ext in (".yaml", ".pgm"):
-            if os.path.exists(args.out + ext):
-                os.replace(args.out + ext, backup + ext)
+    backup = backup_map(args.out, time.strftime("%Y%m%d_%H%M%S"))
+    if backup:
         print("기존 지도를 백업: {}.*".format(backup))
     pgm, yml = save_map(args.out, m.data, info.width, info.height, info.resolution, (o.x, o.y, 0.0))
     print("저장: {} , {}".format(pgm, yml))
