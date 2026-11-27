@@ -1,7 +1,7 @@
-image: test_classroom_box_3.pgm
+image: test_classroom_box_4.pgm
 mode: trinary
 resolution: 0.05000000074505806
-origin: [-0.6453766216453231, -0.3713739111154538, 0.0]
+origin: [-0.7448383003964234, -0.31567476696148095, 0.0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.25
