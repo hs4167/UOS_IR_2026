@@ -10,7 +10,7 @@
   - turtlebot3_node (OpenCR ↔ /cmd_vel, /odom, /battery_state ...)
 ld08_driver는 ~/ld08_ws에 따로 빌드한다 (README 참고).
 
-use_imu:=false (robot.sh는 환경 변수 TB3_USE_IMU=0)
+use_imu:=false (robot.sh 기본값. IMU를 쓰려면 TB3_USE_IMU=1)
   공식 설정은 회전 각도를 OpenCR IMU로 계산한다 (diff_drive_controller odometry.use_imu: true).
   IMU 값이 멈춰 있으면 회전해도 /odom 방향이 그대로라 AMCL 위치가 회전을 못 따라간다 (2026-11-27 실기).
   그때는 공식 설정 파일을 복사해 use_imu만 false로 바꾼 파일을 넘겨 바퀴 엔코더로 회전을 계산한다.
