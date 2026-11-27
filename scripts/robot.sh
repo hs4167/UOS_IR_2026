@@ -82,8 +82,11 @@ if [[ $_ROBOT_SOURCED -eq 0 ]]; then
             _robot_fail "ld08_driver(LDS-02 드라이버)를 찾을 수 없습니다. README '로봇 주행 → LDS-02 드라이버 설치' 참고"
         fi
         _repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-        echo "[robot.sh] bringup 시작: LDS-02 (종료: Ctrl+C)"
-        exec ros2 launch "$_repo/launch/robot_lds02.launch.py"
+        # TB3_USE_IMU=0 ./scripts/robot.sh → 회전을 IMU 대신 바퀴 엔코더로 계산 (IMU 값이 멈춰 있을 때)
+        _use_imu=true
+        [[ "${TB3_USE_IMU:-1}" == "0" ]] && _use_imu=false
+        echo "[robot.sh] bringup 시작: LDS-02, use_imu=$_use_imu (종료: Ctrl+C)"
+        exec ros2 launch "$_repo/launch/robot_lds02.launch.py" use_imu:=$_use_imu
     fi
     echo "[robot.sh] bringup 시작: LDS-01 공식 launch (종료: Ctrl+C)"
     exec ros2 launch turtlebot3_bringup robot.launch.py
