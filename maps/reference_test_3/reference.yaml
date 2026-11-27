@@ -8,17 +8,18 @@ color_space: opencv_lab_8bit
 min_count: 3
 runs:
 - test_record_6
-created: '2026-11-27T17:10:12'
+- test_record_9
+created: '2026-11-27T17:57:00'
 coverage:
   floor_cells: 20700
-  covered_cells: 10058
-  covered_ratio: 0.48589371980676327
-  covered_area_m2: 1.0058
-  missing_area_m2: 1.0642
-frames: 374
+  covered_cells: 10974
+  covered_ratio: 0.5301449275362319
+  covered_area_m2: 1.0974000000000002
+  missing_area_m2: 0.9726
+frames: 299
 coverage_floor:
   floor_cells: 11325
-  covered_cells: 9262
-  covered_ratio: 0.8178366445916114
-  covered_area_m2: 0.9262
-  missing_area_m2: 0.2063
+  covered_cells: 10003
+  covered_ratio: 0.8832671081677704
+  covered_area_m2: 1.0003
+  missing_area_m2: 0.1322
